@@ -169,6 +169,21 @@ pub fn halamadrid_definition() -> Command {
                         .max_value(10_000_000),
                 ),
         )
+        .option(SubCommandBuilder::new("supprimer", "Supprime le match en cours : paris remboursés (gradés)").option(
+            BooleanBuilder::new("confirmer", "Oui, supprimer le match, ses pronos et ses paris").required(true),
+        ))
+        .option(
+            SubCommandBuilder::new("espn", "Crée (ou relie) le prochain match du Real depuis ESPN (gradés)")
+                .option(
+                    ChannelBuilder::new("salon", "Salon de l'affiche (défaut : celui-ci)")
+                        .channel_types([ChannelType::GuildText]),
+                )
+                .option(
+                    IntegerBuilder::new("jours", "Chercher sur les N prochains jours (défaut : 7)")
+                        .min_value(1)
+                        .max_value(14),
+                ),
+        )
         .option(
             SubCommandBuilder::new("auto", "Mode automatique : matchs du Real suivis en direct (gradés)")
                 .option(BooleanBuilder::new("actif", "Ouvrir et suivre les matchs tout seul").required(true))
@@ -278,11 +293,13 @@ pub async fn on_message(ctx: &Ctx, message: &Message) {
 // /halamadrid
 
 pub async fn handle(ix: &Ix, options: &Options) -> Result<()> {
-    let perm = if matches!(options.sub(), "match" | "resultat" | "hommedumatch" | "reactions" | "auto") {
-        Perm::ClasicoGerer
-    } else {
-        Perm::ClasicoJouer
-    };
+    let perm =
+        if matches!(options.sub(), "match" | "resultat" | "hommedumatch" | "reactions" | "auto" | "supprimer" | "espn")
+        {
+            Perm::ClasicoGerer
+        } else {
+            Perm::ClasicoJouer
+        };
     if !allowed(ix, perm).await? {
         return Ok(());
     }
@@ -310,6 +327,8 @@ pub async fn handle(ix: &Ix, options: &Options) -> Result<()> {
         "mur" => wall(ix, &guild).await,
         "prochainbut" => next_goal_bet(ix, options, &guild).await,
         "auto" => configure_auto(ix, options, &guild).await,
+        "supprimer" => delete_match(ix, options, &guild).await,
+        "espn" => from_espn(ix, options, &guild).await,
         "reactions" => {
             let on = options.boolean("actif").unwrap_or(false);
             service::set_reactions(&ix.ctx.db, &guild, on).await?;
@@ -321,6 +340,92 @@ pub async fn handle(ix: &Ix, options: &Options) -> Result<()> {
             ix.reply(Reply::ephemeral(text)).await
         }
         _ => Ok(()),
+    }
+}
+
+async fn delete_match(ix: &Ix, options: &Options, guild: &str) -> Result<()> {
+    if !options.boolean("confirmer").unwrap_or(false) {
+        return ix.reply(Reply::ephemeral("Rien n'est supprimé : relance avec `confirmer:True`.")).await;
+    }
+    let Some(game) = service::current(&ix.ctx.db, guild).await? else {
+        return ix.reply(Reply::ephemeral("Aucun match en cours. Un match déjà réglé reste dans le classement.")).await;
+    };
+    ix.defer(true).await?;
+    let refunded = service::delete_match(&ix.ctx.db, &game).await?;
+    // Affiche retirée (le fil, rattaché au message, disparaît avec elle côté Discord si vide).
+    if let (Some(channel), Some(message)) = (parse_id(&game.channel_id), game.message_id.as_deref().and_then(parse_id))
+    {
+        messages::delete_quietly(&ix.ctx, channel, message).await;
+    }
+    ix.edit_text(format!(
+        "🗑️ Match contre **{}** supprimé : pronostics et vote effacés, {refunded} pari(s) remboursé(s).",
+        game.adversaire
+    ))
+    .await
+}
+
+async fn from_espn(ix: &Ix, options: &Options, guild: &str) -> Result<()> {
+    let channel_id = options.channel("salon").or(ix.channel_id());
+    let Some(channel_id) = channel_id else {
+        return ix.reply(Reply::ephemeral(GUILD_ONLY)).await;
+    };
+    ix.defer(true).await?;
+    let days = options.integer("jours").unwrap_or(7);
+    let events = match espn::upcoming_events(days).await {
+        Ok(events) => events,
+        Err(error) => {
+            tracing::warn!(?error, "clásico : ESPN indisponible");
+            return ix
+                .edit_text("ESPN ne répond pas pour l'instant : réessaie, ou ouvre le match avec `/halamadrid match`.")
+                .await;
+        }
+    };
+    let current = service::current(&ix.ctx.db, guild).await?;
+    // Un événement déjà relié à un match de ce serveur n'est pas recréé.
+    let mut candidates = Vec::new();
+    for event in &events {
+        let linked_here = current.as_ref().and_then(|g| g.external_id.as_deref()) == Some(event.id.as_str());
+        if linked_here || !service::has_external(&ix.ctx.db, guild, &event.id).await? {
+            candidates.push(event.clone());
+        }
+    }
+    let Some(event) = espn::next_playable(&candidates).cloned() else {
+        return ix.edit_text(format!("Aucun match du Real trouvé sur ESPN dans les {days} prochains jours.")).await;
+    };
+    let rival = live::rival_name(&event.opponent);
+    let competition = cards::league_label(Some(&event.league));
+    match current {
+        // Match ouvert à la main : on le relie à l'événement (heure, adversaire, logo).
+        Some(game) if game.external_id.is_none() => {
+            service::link_external(&ix.ctx.db, &game.id, &event, &rival).await?;
+            refresh(&ix.ctx, guild, &game.id).await;
+            ix.edit_text(format!(
+                "🔗 Match relié à ESPN : **Real Madrid – {rival}** ({competition}), <t:{}:F>. Suivi en direct activé.",
+                event.kickoff.timestamp()
+            ))
+            .await
+        }
+        Some(game) if game.external_id.as_deref() == Some(event.id.as_str()) => {
+            ix.edit_text(format!("Ce match est déjà suivi : **Real Madrid – {}**.", game.adversaire)).await
+        }
+        Some(game) => {
+            ix.edit_text(format!(
+                "Un autre match est en cours (**{}**) : règle-le ou supprime-le avec `/halamadrid supprimer` d'abord.",
+                game.adversaire
+            ))
+            .await
+        }
+        None => {
+            let id = service::create_external(&ix.ctx.db, guild, &event, &rival, &channel_id.to_string()).await?;
+            let game = service::get(&ix.ctx.db, guild, &id).await?.expect("match créé");
+            let sent = messages::send(&ix.ctx, channel_id, &match_message(&game, &[], &[], DbTime::now())).await?;
+            service::set_message(&ix.ctx.db, &id, &sent.id.to_string()).await?;
+            ix.edit_text(format!(
+                "⚽ Match créé depuis ESPN dans <#{channel_id}> : **Real Madrid – {rival}** ({competition}), <t:{}:F>.",
+                event.kickoff.timestamp()
+            ))
+            .await
+        }
     }
 }
 

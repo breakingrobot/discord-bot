@@ -129,7 +129,10 @@ async fn open_upcoming(ctx: &Ctx, events: &mut Events) {
 
 async fn open_for_guild(ctx: &Ctx, guild: &str, channel: &str, event: &espn::Event) -> Result<()> {
     // Un seul match non réglé à la fois, et jamais deux fois le même.
-    if service::current(&ctx.db, guild).await?.is_some() || service::has_external(&ctx.db, guild, &event.id).await? {
+    if service::current(&ctx.db, guild).await?.is_some()
+        || service::has_external(&ctx.db, guild, &event.id).await?
+        || service::is_dismissed(&ctx.db, guild, &event.id).await?
+    {
         return Ok(());
     }
     let Some(channel_id) = parse_id(channel) else { return Ok(()) };

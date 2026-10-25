@@ -322,6 +322,34 @@ pub async fn real_madrid_events(day: NaiveDate) -> Result<Vec<Event>> {
     }
 }
 
+/// Matchs du Real sur les `days` prochains jours (aujourd'hui compris), dans l'ordre.
+pub async fn upcoming_events(days: i64) -> Result<Vec<Event>> {
+    let today = Utc::now().date_naive();
+    let requests = (0..days.max(1)).map(|offset| real_madrid_events(today + chrono::Duration::days(offset)));
+    let mut events: Vec<Event> = Vec::new();
+    let mut last_error = None;
+    for result in futures_util::future::join_all(requests).await {
+        match result {
+            Ok(found) => {
+                events.extend(found.into_iter().filter(|e| !events.iter().any(|k| k.id == e.id)).collect::<Vec<_>>())
+            }
+            Err(error) => last_error = Some(error),
+        }
+    }
+    if events.is_empty()
+        && let Some(error) = last_error
+    {
+        return Err(error);
+    }
+    events.sort_by_key(|e| e.kickoff);
+    Ok(events)
+}
+
+/// Prochain match à créer : en cours ou à venir (pas terminé).
+pub fn next_playable(events: &[Event]) -> Option<&Event> {
+    events.iter().filter(|e| e.state != State::Post).min_by_key(|e| e.kickoff)
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;

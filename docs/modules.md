@@ -547,6 +547,8 @@ Pour les soirs de match du Real. Tout se passe dans le salon où le match est ou
 | `/halamadrid reactions actif` | Gradés | Le bot répond d'une vanne (et d'un 🤡) aux messages « Visca Barça », une fois par minute et par salon (*Message Content Intent* requis). |
 | `/halamadrid prochainbut camp mise` | Membres | Pari en direct, pendant le match : le Real, l'adversaire ou plus aucun but. Réglé au but suivant (ou à la fin pour « plus aucun but »), même pari mutuel. |
 | `/halamadrid auto actif [salon] [role_clown] [role_madridista]` | Gradés | Mode automatique (voir ci-dessous). |
+| `/halamadrid espn [salon] [jours]` | Gradés | Crée tout de suite le prochain match du Real trouvé sur ESPN (7 jours par défaut), sans attendre l'ouverture automatique. Un match ouvert à la main et pas encore relié est **relié** à ESPN à la place (heure, adversaire, logo corrigés). |
+| `/halamadrid supprimer confirmer:True` | Gradés | Supprime le match en cours : paris remboursés (avant-match et en direct), pronostics et vote effacés, affiche retirée. L'ouverture automatique ne recrée pas un match supprimé (`/halamadrid espn` le peut). Un match déjà réglé ne se supprime pas. |
 | Bouton **Madridista** de l'affiche | Membres | Prend ou retire le rôle Madridista, pingé au coup d'envoi et à chaque but du Real. |
 
 ### Mode automatique
