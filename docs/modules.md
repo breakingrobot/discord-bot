@@ -9,6 +9,7 @@
 | `/presence`, `/absence`, `/transaction`, `/vehicle`, `/recrue`, `/numero`, `/cotisation`, `/contact`, `/coffre` | Selon l'action, voir [Permissions](#permissions) | Utilisation courante. |
 | `/fiche [membre]` | Chacun la sienne ; `membre.fiche` pour les autres | [Fiche du membre](#fiche-du-membre). |
 | `/rappels` | Membres du groupe | Ses [rappels en message privé](#rappels-en-message-privé). |
+| `/m2t` | Gradés et leads (`m2t.utiliser`) | Publie « @… t’es co? » dans le salon où la commande est lancée ; seule la personne visée est notifiée. Le niveau se règle avec `/config permission action:m2t.utiliser`. |
 | Clic droit → *Applications* | Voir [plus bas](#actions-au-clic-droit) | Raccourcis sur un membre ou un message. |
 
 `/config` n'apparaît qu'aux membres ayant « Gérer le serveur ». Les autres commandes sont visibles de tous
@@ -98,6 +99,7 @@ mêmes effets que les commandes ([pages du site](site-web.md#présences)).
 | `membre.fiche` | Membres | Fiche d'un membre (présences, cotisations, coffres, recrue…) | Gradés |
 | `site.stats` | Site | Statistiques du serveur sur le site | « Gérer le serveur » |
 | `site.journal` | Site | Journal du staff sur le site | « Gérer le serveur » |
+| `m2t.utiliser` | Divers | Relancer la personne visée avec `/m2t` | Gradés |
 
 Déclarer ses propres absences, répondre aux présences, enregistrer ou supprimer son propre numéro et supprimer
 ses propres cotisations demandent seulement d'être membre du groupe.

@@ -49,6 +49,7 @@ export type Perm =
   | 'contact.voir' | 'contact.ajouter' | 'contact.modifier' | 'contact.notes'
   | 'membre.fiche'
   | 'site.stats' | 'site.journal'
+  | 'm2t.utiliser'
 
 // ---------------------------------------------------------------------------
 // Session — GET /api/me (toujours 200, même sans connexion)

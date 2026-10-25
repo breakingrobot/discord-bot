@@ -2811,7 +2811,8 @@
           "contact.notes",
           "membre.fiche",
           "site.stats",
-          "site.journal"
+          "site.journal",
+          "m2t.utiliser"
         ],
         "type": "string"
       },

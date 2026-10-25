@@ -145,6 +145,7 @@ perms! {
     MembreFiche => "membre.fiche", "Membres", "Fiche d'un membre (présences, cotisations, coffres, recrue…)", Grade, false;
     SiteStats => "site.stats", "Site", "Statistiques du serveur sur le site", Admin, false;
     Journal => "site.journal", "Site", "Journal du staff sur le site", Admin, false;
+    M2t => "m2t.utiliser", "Divers", "Relancer la personne visée avec /m2t", Grade, false;
 }
 
 impl Perm {
