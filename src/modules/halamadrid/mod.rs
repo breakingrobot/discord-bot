@@ -376,7 +376,9 @@ async fn from_espn(ix: &Ix, options: &Options, guild: &str) -> Result<()> {
         Err(error) => {
             tracing::warn!(?error, "clásico : ESPN indisponible");
             return ix
-                .edit_text("ESPN ne répond pas pour l'instant : réessaie, ou ouvre le match avec `/halamadrid match`.")
+                .edit_text(format!(
+                    "ESPN ne répond pas pour l'instant ({error}) : réessaie, ou ouvre le match avec `/halamadrid match`."
+                ))
                 .await;
         }
     };

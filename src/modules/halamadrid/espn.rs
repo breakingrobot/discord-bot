@@ -8,7 +8,12 @@ use chrono::{DateTime, NaiveDate, Utc};
 use serde_json::Value;
 use std::time::Duration;
 
-const API: &str = "https://site.api.espn.com/apis/site/v2/sports/soccer";
+/// Hôtes de l'API : le second sert de secours si le premier refuse (403, panne).
+const HOSTS: [&str; 2] = ["https://site.api.espn.com", "https://site.web.api.espn.com"];
+const API_PATH: &str = "/apis/site/v2/sports/soccer";
+/// ESPN refuse (403) les clients qui ne ressemblent pas à un navigateur.
+const USER_AGENT: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 /// Compétitions où le Real peut jouer : Liga, Ligue des champions, Coupe et Supercoupe d'Espagne, amicaux.
 const LEAGUES: [&str; 6] =
     ["esp.1", "uefa.champions", "esp.copa_del_rey", "esp.super_cup", "fifa.cwc", "club.friendly"];
@@ -188,17 +193,36 @@ pub fn parse_scoreboard(body: &Value, league: &str) -> Vec<Event> {
         .unwrap_or_default()
 }
 
-async fn get(path: &str, query: &[(&str, String)]) -> Result<Value> {
+async fn get_from(host: &str, path: &str, query: &[(&str, String)]) -> Result<Value> {
     let response = crate::util::http::client()
-        .get(format!("{API}/{path}"))
+        .get(format!("{host}{API_PATH}/{path}"))
         .query(query)
+        .header(reqwest::header::USER_AGENT, USER_AGENT)
+        .header(reqwest::header::ACCEPT, "application/json, text/plain, */*")
+        .header(reqwest::header::ACCEPT_LANGUAGE, "fr-FR,fr;q=0.9,en;q=0.8")
+        .header(reqwest::header::REFERER, "https://www.espn.com/")
+        .header(reqwest::header::ORIGIN, "https://www.espn.com")
         .timeout(Duration::from_secs(10))
         .send()
         .await
-        .context("ESPN injoignable")?
-        .error_for_status()
-        .context("ESPN a refusé la requête")?;
-    Ok(response.json().await?)
+        .context("ESPN injoignable")?;
+    let status = response.status();
+    if !status.is_success() {
+        anyhow::bail!("ESPN a répondu {} ({host})", status.as_u16());
+    }
+    response.json().await.context("réponse ESPN illisible")
+}
+
+/// Requête sur le premier hôte qui répond.
+async fn get(path: &str, query: &[(&str, String)]) -> Result<Value> {
+    let mut last_error = None;
+    for host in HOSTS {
+        match get_from(host, path, query).await {
+            Ok(body) => return Ok(body),
+            Err(error) => last_error = Some(error),
+        }
+    }
+    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("aucun hôte ESPN")))
 }
 
 async fn scoreboard(league: &str, day: NaiveDate) -> Result<Value> {
