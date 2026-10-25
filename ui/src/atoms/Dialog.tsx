@@ -29,14 +29,14 @@ export const DialogContent = ({ className, children, showCloseButton = true, ...
     <DialogPrimitive.Content
       data-slot="dialog-content"
       className={cn(
-        'fixed top-[50%] left-[50%] z-50 grid max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto rounded-lg border bg-card p-6 shadow-lg duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg',
+        'fixed inset-x-0 bottom-0 z-50 grid max-h-[calc(100dvh-1rem)] w-full gap-4 overflow-y-auto overscroll-contain rounded-t-xl border bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-lg duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-bottom data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-bottom sm:inset-x-auto sm:top-[50%] sm:bottom-auto sm:left-[50%] sm:max-h-[calc(100dvh-2rem)] sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg sm:p-6 sm:data-[state=closed]:slide-out-to-bottom-0 sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:slide-in-from-bottom-0 sm:data-[state=open]:zoom-in-95',
         className,
       )}
       {...props}
     >
       {children}
       {showCloseButton && (
-        <DialogPrimitive.Close className="absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none [&_svg]:size-4">
+        <DialogPrimitive.Close className="absolute top-3 right-3 flex size-8 items-center justify-center rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none sm:top-4 sm:right-4 sm:size-auto [&_svg]:size-4">
           <XIcon />
           <span className="sr-only">Fermer</span>
         </DialogPrimitive.Close>
@@ -52,7 +52,10 @@ export const DialogHeader = ({ className, ...props }: ComponentProps<'div'>) => 
 export const DialogFooter = ({ className, ...props }: ComponentProps<'div'>) => (
   <div
     data-slot="dialog-footer"
-    className={cn('flex flex-col-reverse gap-2 sm:flex-row sm:justify-end', className)}
+    className={cn(
+      'flex flex-col-reverse gap-2 sm:flex-row sm:justify-end max-sm:[&>[data-slot=button]]:w-full',
+      className,
+    )}
     {...props}
   />
 )

@@ -30,7 +30,7 @@ export const tabPages = (guild: GuildAccess): GuildPage[] => {
 }
 
 const TAB =
-  'flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-medium text-ink-muted outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'
+  'flex min-h-14 flex-1 flex-col short:min-h-11 items-center justify-center gap-0.5 px-1 text-[11px] font-medium text-ink-muted outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'
 
 export type GuildTabBarProps = { guild: GuildAccess; userId: string }
 

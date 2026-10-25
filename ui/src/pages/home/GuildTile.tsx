@@ -27,7 +27,7 @@ export const GuildTile = ({ guild, userId }: GuildTileProps) => {
                 page={page}
                 guildId={guild.id}
                 userId={userId}
-                className="group flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
+                className="group flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-muted pointer-coarse:min-h-11"
               >
                 <page.icon className="size-4 text-ink-subtle group-hover:text-brand" aria-hidden />
                 <span className="font-medium text-ink">{page.label}</span>

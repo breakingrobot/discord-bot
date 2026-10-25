@@ -117,7 +117,7 @@ export const TransactionTable = ({ items, guildId, statuses }: TransactionTableP
                         aria-expanded={expanded}
                         aria-controls={`objets-${item.id}`}
                         aria-label={`${expanded ? 'Masquer' : 'Afficher'} les objets de la transaction avec ${item.groupe}`}
-                        className="flex size-6 items-center justify-center rounded-sm text-ink-subtle hover:text-ink focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                        className="tap flex size-6 items-center justify-center rounded-sm text-ink-subtle hover:text-ink focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
                         onClick={(event) => {
                           event.stopPropagation()
                           setOpen(expanded ? null : item.id)

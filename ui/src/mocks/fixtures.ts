@@ -170,6 +170,7 @@ export const ALL_PERMS: Perm[] = [
   'membre.fiche',
   'site.stats',
   'site.journal',
+  'm2t.utiliser',
 ]
 
 export const GUILDS: GuildAccess[] = [
@@ -369,6 +370,13 @@ export const ACTIONS: ActionDef[] = [
     strict: false,
   },
   { key: 'site.journal', module: 'Site', label: 'Journal du staff sur le site', defaultLevel: 'admin', strict: false },
+  {
+    key: 'm2t.utiliser',
+    module: 'Divers',
+    label: 'Relancer la personne visée avec /m2t',
+    defaultLevel: 'grade',
+    strict: false,
+  },
 ]
 
 export const permissionLevels = new Map<Perm, Level>([

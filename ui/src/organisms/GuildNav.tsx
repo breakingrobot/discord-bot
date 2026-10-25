@@ -30,7 +30,7 @@ export const GuildNav = ({ me, guild, userId, onNavigate }: GuildNavProps) => {
                   guildId={guild.id}
                   userId={userId}
                   {...(onNavigate ? { onNavigate } : {})}
-                  className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:bg-muted hover:text-ink"
+                  className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:bg-muted hover:text-ink pointer-coarse:min-h-11"
                   activeClassName="bg-brand-soft text-brand hover:bg-brand-soft hover:text-brand"
                 >
                   <page.icon className="size-4" aria-hidden />

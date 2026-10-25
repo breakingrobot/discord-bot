@@ -26,7 +26,7 @@ export const MemberName = ({ member, guildId, linked = true, avatar = true, clas
       <Link
         to="/serveurs/$guildId/membres/$userId"
         params={{ guildId, userId: member.id }}
-        className={cn(base, 'rounded-sm hover:text-brand hover:underline')}
+        className={cn(base, 'tap rounded-sm hover:text-brand hover:underline')}
       >
         {content}
       </Link>

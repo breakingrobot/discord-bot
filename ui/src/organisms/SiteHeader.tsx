@@ -26,18 +26,21 @@ export const SiteHeader = ({ menu }: SiteHeaderProps) => {
   const user = me.data?.user ?? null
   const openPalette = useSetAtom(paletteOpenAtom)
   return (
-    <header className="sticky top-0 z-40 border-b bg-card/90 backdrop-blur supports-[backdrop-filter]:bg-card/75">
-      <div className="mx-auto flex h-14 max-w-7xl items-center gap-2 px-4 sm:px-6">
+    <header className="sticky top-0 z-40 border-b bg-card/90 backdrop-blur supports-[backdrop-filter]:bg-card/75 short:static">
+      <div className="mx-auto flex h-14 max-w-7xl items-center gap-2 gutter">
         {menu}
-        <Link to="/" className="flex items-center gap-2 rounded-md font-semibold tracking-tight text-ink">
-          <img src="/favicon.svg" alt="" className="size-6" />
-          <span>Bot Discord</span>
+        <Link
+          to="/"
+          className="flex min-w-0 items-center gap-2 rounded-md font-semibold tracking-tight text-ink pointer-coarse:min-h-11"
+        >
+          <img src="/favicon.svg" alt="" className="size-6 shrink-0" />
+          <span className="truncate">Bot Discord</span>
         </Link>
         <nav className="ml-2 hidden items-center gap-1 sm:flex" aria-label="Navigation principale">
           {me.data?.tickets && (
             <Link
               to="/tickets"
-              className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-ink-muted hover:text-ink"
+              className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-ink-muted hover:text-ink pointer-coarse:min-h-11"
               activeProps={{
                 className: 'bg-brand-soft text-brand hover:text-brand',
                 'aria-current': 'page',
