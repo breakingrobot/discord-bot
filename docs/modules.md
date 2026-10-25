@@ -102,7 +102,7 @@ mêmes effets que les commandes ([pages du site](site-web.md#présences)).
 | `site.journal` | Site | Journal du staff sur le site | « Gérer le serveur » |
 | `m2t.utiliser` | Divers | Relancer la personne visée avec `/m2t` | Gradés |
 | `clasico.jouer` | Clásico | `/halamadrid` (cri, pronostics, paris, classement) et `/putabarca` | Membres du groupe |
-| `clasico.gerer` | Clásico | Ouvrir un match, `/golazo`, résultat, homme du match, réponses automatiques | Gradés |
+| `clasico.gerer` | Clásico | Ouvrir un match, `/golazo`, résultat, homme du match, réponses automatiques, mode automatique | Gradés |
 
 Déclarer ses propres absences, répondre aux présences, enregistrer ou supprimer son propre numéro et supprimer
 ses propres cotisations demandent seulement d'être membre du groupe.
@@ -545,11 +545,28 @@ Pour les soirs de match du Real. Tout se passe dans le salon où le match est ou
 | `/halamadrid mur` | Membres | Mur de la honte du dernier match : ceux qui ont annoncé ou parié sur la victoire adverse. |
 | `/halamadrid cri` · `/putabarca [cule]` | Membres | Cri de supporter ; vanne bon enfant sur le Barça (la personne visée est nommée sans être notifiée). |
 | `/halamadrid reactions actif` | Gradés | Le bot répond d'une vanne (et d'un 🤡) aux messages « Visca Barça », une fois par minute et par salon (*Message Content Intent* requis). |
+| `/halamadrid prochainbut camp mise` | Membres | Pari en direct, pendant le match : le Real, l'adversaire ou plus aucun but. Réglé au but suivant (ou à la fin pour « plus aucun but »), même pari mutuel. |
+| `/halamadrid auto actif [salon] [role_clown] [role_madridista]` | Gradés | Mode automatique (voir ci-dessous). |
+| Bouton **Madridista** de l'affiche | Membres | Prend ou retire le rôle Madridista, pingé au coup d'envoi et à chaque but du Real. |
 
-**Score en direct automatique** : avec la variable `FOOTBALL_DATA_TOKEN` (clé gratuite sur football-data.org),
-le bot lit le score du match du Real chaque minute pendant 3 h après le coup d'envoi : affiche mise à jour, buts
-annoncés, coup de sifflet final signalé. Le résultat reste validé par un gradé (`/halamadrid resultat` sans score).
-Sans clé, `/golazo` fait le même travail à la main.
+### Mode automatique
+
+Le bot lit l'**API publique d'ESPN** (sans clé ni réglage) chaque minute : LaLiga, Ligue des champions, Coupe et
+Supercoupe d'Espagne, Coupe du monde des clubs, amicaux.
+
+- **Ouverture** (serveurs en `/halamadrid auto actif:true`) : chaque match du Real est publié dans le salon choisi
+  jusqu'à 12 h avant, avec le logo de l'adversaire ; pronos et paris ouverts. Un seul match non réglé à la fois.
+- **Avant le coup d'envoi** : les deux onze de départ dès que l'API les donne (à partir d'1 h 15 avant).
+- **En direct**, dans un **fil** ouvert sous l'affiche au coup d'envoi (« Créer des fils publics » requis) : coup
+  d'envoi (ping Madridista), chaque but avec buteur, minute, penalty ou contre son camp et **photo du buteur**,
+  « qui l'avait annoncé », paris « prochain but » réglés ; buts annulés par la VAR ; cartons rouges ; mi-temps et
+  fin avec les **statistiques** (possession, tirs, tirs cadrés, corners, fautes). L'affiche suit le score et la minute.
+- **Coup de sifflet final** : résultat automatique avec le score et les buteurs de l'API (points, gains, rôle
+  clown, carte du résultat), sans gradé.
+
+Un match ouvert à la main (`/halamadrid match`) est aussi suivi s'il correspond à un match du Real à moins de 2 h
+près. `/golazo` et `/halamadrid resultat` restent là si l'API ne répond pas. Les rôles clown et Madridista
+demandent au bot « Gérer les rôles », avec ces rôles placés sous le sien.
 
 ## État de la configuration
 

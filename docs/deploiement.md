@@ -73,8 +73,6 @@ dans le portail.
 | `RUST_LOG` | `info` | Détail des logs : `error`, `warn`, `info`, `debug`. Par module : `info,bot_discord::modmail=debug`. |
 | `TOKIO_WORKER_THREADS` | `2` | Threads de travail. 2 suffisent pour un bot ; plus de threads = plus de mémoire. |
 | `MM_*`, `MODMAIL_CONFIG` | — | [Module ticket](tickets.md). |
-| `FOOTBALL_DATA_TOKEN` | — | Clé gratuite de football-data.org : score en direct des matchs du Real pour la [soirée Clásico](modules.md#soirée-clásico). Sans clé, `/golazo` à la main. |
-
 Les heures saisies dans les commandes sont toujours interprétées en heure de Paris, quel que soit `TZ`.
 
 ### Exemple complet

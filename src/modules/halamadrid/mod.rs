@@ -3,6 +3,8 @@
 //! `/putabarca` (chambrage). Jouer : `clasico.jouer` (membres) ; ouvrir un match,
 //! annoncer un but, saisir le résultat : `clasico.gerer` (gradés).
 
+pub mod cards;
+pub mod espn;
 pub mod live;
 pub mod service;
 
@@ -31,6 +33,7 @@ use std::{
     sync::{LazyLock, Mutex},
     time::{Duration, Instant},
 };
+use twilight_model::channel::ChannelType;
 use twilight_model::{
     application::{
         command::{Command, CommandType},
@@ -45,14 +48,12 @@ use twilight_model::{
     },
 };
 use twilight_util::builder::command::{
-    BooleanBuilder, CommandBuilder, IntegerBuilder, RoleBuilder, StringBuilder, SubCommandBuilder, UserBuilder,
+    BooleanBuilder, ChannelBuilder, CommandBuilder, IntegerBuilder, RoleBuilder, StringBuilder, SubCommandBuilder,
+    UserBuilder,
 };
 
 pub const NAMESPACE: &str = "clasico";
-/// Or du Real.
-const MADRID: u32 = 0xfebe10;
-/// Grenat.
-const BARCA: u32 = 0xa50044;
+use cards::{BARCA, MADRID};
 const DEFAULT_RIVAL: &str = "FC Barcelone";
 const DEFAULT_KICKOFF: &str = "21:00";
 /// Durée du rôle clown.
@@ -154,6 +155,33 @@ pub fn halamadrid_definition() -> Command {
             SubCommandBuilder::new("reactions", "Répondre aux « Visca Barça » du serveur (gradés)")
                 .option(BooleanBuilder::new("actif", "Activer les réponses automatiques").required(true)),
         )
+        .option(
+            SubCommandBuilder::new("prochainbut", "Pari en direct : qui marque le prochain but ?")
+                .option(StringBuilder::new("camp", "Prochain but").required(true).choices([
+                    ("Le Real", "REAL"),
+                    ("L'adversaire", "ADVERSE"),
+                    ("Plus aucun but", "AUCUN"),
+                ]))
+                .option(
+                    IntegerBuilder::new("mise", "Montant en $ fictifs")
+                        .required(true)
+                        .min_value(100)
+                        .max_value(10_000_000),
+                ),
+        )
+        .option(
+            SubCommandBuilder::new("auto", "Mode automatique : matchs du Real suivis en direct (gradés)")
+                .option(BooleanBuilder::new("actif", "Ouvrir et suivre les matchs tout seul").required(true))
+                .option(
+                    ChannelBuilder::new("salon", "Salon des matchs (défaut : celui-ci)")
+                        .channel_types([ChannelType::GuildText]),
+                )
+                .option(RoleBuilder::new("role_clown", "Rôle clown donné au résultat (24 h)"))
+                .option(RoleBuilder::new(
+                    "role_madridista",
+                    "Rôle que chacun prend, pingé au coup d'envoi et aux buts",
+                )),
+        )
         .build()
 }
 
@@ -250,7 +278,7 @@ pub async fn on_message(ctx: &Ctx, message: &Message) {
 // /halamadrid
 
 pub async fn handle(ix: &Ix, options: &Options) -> Result<()> {
-    let perm = if matches!(options.sub(), "match" | "resultat" | "hommedumatch" | "reactions") {
+    let perm = if matches!(options.sub(), "match" | "resultat" | "hommedumatch" | "reactions" | "auto") {
         Perm::ClasicoGerer
     } else {
         Perm::ClasicoJouer
@@ -280,6 +308,8 @@ pub async fn handle(ix: &Ix, options: &Options) -> Result<()> {
         "hommedumatch" => open_motm(ix, options, &guild).await,
         "classement" => standings(ix, &guild).await,
         "mur" => wall(ix, &guild).await,
+        "prochainbut" => next_goal_bet(ix, options, &guild).await,
+        "auto" => configure_auto(ix, options, &guild).await,
         "reactions" => {
             let on = options.boolean("actif").unwrap_or(false);
             service::set_reactions(&ix.ctx.db, &guild, on).await?;
@@ -292,6 +322,99 @@ pub async fn handle(ix: &Ix, options: &Options) -> Result<()> {
         }
         _ => Ok(()),
     }
+}
+
+async fn configure_auto(ix: &Ix, options: &Options, guild: &str) -> Result<()> {
+    let on = options.boolean("actif").unwrap_or(false);
+    let mut auto = service::auto(&ix.ctx.db, guild).await?;
+    auto.auto_channel_id = if on { options.channel("salon").or(ix.channel_id()).map(|c| c.to_string()) } else { None };
+    if let Some(role) = options.role("role_clown") {
+        auto.clown_role_id = Some(role.to_string());
+    }
+    if let Some(role) = options.role("role_madridista") {
+        auto.madridista_role_id = Some(role.to_string());
+    }
+    service::set_auto(&ix.ctx.db, guild, &auto).await?;
+    let role = |r: &Option<String>| r.as_deref().map_or_else(|| "aucun".to_owned(), |r| format!("<@&{r}>"));
+    let text = match &auto.auto_channel_id {
+        Some(channel) => format!(
+            "⚙️ **Mode automatique activé** dans <#{channel}>.\n\
+             • Chaque match du Real est publié quelques heures avant (pronos et paris ouverts).\n\
+             • En direct, dans un fil : coup d'envoi, compos, buts (buteur, minute, photo), rouges, mi-temps et fin, avec les stats.\n\
+             • Au coup de sifflet final : points, gains et carte du résultat, sans gradé.\n\
+             Rôle clown : {} · rôle Madridista : {}\n-# Données : API publique d'ESPN.",
+            role(&auto.clown_role_id),
+            role(&auto.madridista_role_id)
+        ),
+        None => "Mode automatique coupé : `/halamadrid match` et `/golazo` restent disponibles.".to_owned(),
+    };
+    ix.reply(Reply::ephemeral(text)).await
+}
+
+async fn next_goal_bet(ix: &Ix, options: &Options, guild: &str) -> Result<()> {
+    let Some(game) = service::current(&ix.ctx.db, guild).await? else {
+        return ix.reply(Reply::ephemeral("Aucun match en cours.")).await;
+    };
+    if game.open(DbTime::now()) {
+        return ix
+            .reply(Reply::ephemeral(
+                "Les paris « prochain but » ouvrent au coup d'envoi. Avant : `/halamadrid parier`.",
+            ))
+            .await;
+    }
+    let Some(choice) = options.string("camp").as_deref().and_then(service::NextGoal::parse) else {
+        return ix.reply(Reply::ephemeral("Choix inconnu.")).await;
+    };
+    let mise = options.integer("mise").unwrap_or(0);
+    let round = game.live_madrid + game.live_adverse;
+    let user = ix.user_id().to_string();
+    match service::place_live_bet(&ix.ctx.db, guild, &game.id, round, &user, choice, mise).await? {
+        Err(message) => ix.reply(Reply::ephemeral(message)).await,
+        Ok(remaining) => {
+            let label = match choice {
+                service::NextGoal::Real => "le Real marque le prochain but".to_owned(),
+                service::NextGoal::Adverse => format!("{} marque le prochain but", game.adversaire),
+                service::NextGoal::Aucun => "plus aucun but".to_owned(),
+            };
+            ix.reply(Reply::ephemeral(format!(
+                "🎲 Pari en direct : **{}** sur « {label} » (score actuel {} – {}). Il te reste **{}**.",
+                money(mise),
+                game.live_madrid,
+                game.live_adverse,
+                money(remaining)
+            )))
+            .await
+        }
+    }
+}
+
+/// Prend ou retire le rôle Madridista (bouton de l'affiche).
+async fn toggle_madridista(ix: &Ix) -> Result<()> {
+    let Some(guild_id) = ix.guild_id() else { return Ok(()) };
+    let auto = service::auto(&ix.ctx.db, &guild_id.to_string()).await?;
+    let Some(role) = auto.madridista_role_id.as_deref().and_then(parse_id) else {
+        return ix
+            .reply(Reply::ephemeral(
+                "Pas de rôle Madridista sur ce serveur : un gradé le règle avec `/halamadrid auto`.",
+            ))
+            .await;
+    };
+    let has = ix.member_roles().contains(&role);
+    let result = if has {
+        ix.ctx.http.remove_guild_member_role(guild_id, ix.user_id(), role).await.map(drop)
+    } else {
+        ix.ctx.http.add_guild_member_role(guild_id, ix.user_id(), role).await.map(drop)
+    };
+    if let Err(error) = result {
+        tracing::warn!(?error, "clásico : rôle Madridista refusé (permission « Gérer les rôles » ?)");
+        return ix.reply(Reply::ephemeral("Impossible de changer ton rôle : préviens un admin.")).await;
+    }
+    let text = if has {
+        "Rôle Madridista retiré : plus de ping pendant les matchs."
+    } else {
+        "⚪ Bienvenue chez les Madridistas ! Tu seras pingé au coup d'envoi et à chaque but du Real."
+    };
+    ix.reply(Reply::ephemeral(text)).await
 }
 
 async fn cri(ix: &Ix) -> Result<()> {
@@ -361,37 +484,73 @@ fn bets_text(bets: &[(Outcome, i64)], rival: &str) -> String {
     format!("Cagnotte **{}** · {}", money(pot), odds.join(" · "))
 }
 
+/// Tendances en barres : une ligne par issue.
+fn tendencies_bars(pronos: &[Prono], rival: &str) -> String {
+    match service::tendencies(pronos) {
+        None => "Aucun pronostic pour l'instant : à toi de jouer !".to_owned(),
+        Some([win, draw, loss]) => format!(
+            "`Real    ` {}\n`Nul     ` {}\n`{:<8.8}` {}\n-# {} pronostic(s)",
+            cards::bar(win),
+            cards::bar(draw),
+            rival,
+            cards::bar(loss),
+            pronos.len()
+        ),
+    }
+}
+
 /// Message du match : affiche, score en direct, pronostics, paris et score final.
 fn match_message(game: &Match, pronos: &[Prono], bets: &[(Outcome, i64)], now: DbTime) -> Outgoing {
-    let kickoff = game.kickoff.unix();
-    let mut embed = EmbedBuilder::new().color(MADRID);
-    embed = match game.settled() {
+    let kickoff = game.kickoff;
+    let competition = cards::league_label(game.league.as_deref());
+    let logo = game.rival_logo.as_deref();
+    let mut embed = match game.settled() {
         Some((madrid, adverse)) => {
             let scorers = game.buteurs.as_deref().filter(|b| !b.trim().is_empty()).unwrap_or("—");
-            embed.title(format!("⚪ Real Madrid {madrid} – {adverse} {} · terminé", game.adversaire)).description(format!(
-                "Score final : {}.\n⚽ Buteurs : {scorers}",
-                outcome_label(Outcome::of(madrid, adverse), &game.adversaire)
+            cards::base(competition, MADRID, logo)
+                .title("🏁 Terminé")
+                .description(format!(
+                    "{}\n{}\n⚽ {scorers}",
+                    cards::scoreline(madrid, adverse, &game.adversaire),
+                    outcome_label(Outcome::of(madrid, adverse), &game.adversaire)
+                ))
+        }
+        None if game.open(now) => cards::base(competition, MADRID, logo)
+            .title(format!("Real Madrid – {}", game.adversaire))
+            .description(
+                "Pronostics et paris ouverts jusqu'au coup d'envoi : **Mon prono** ci-dessous, `/halamadrid parier`.\n-# Score exact 3 pts · bonne issue 1 pt · buteur madrilène annoncé qui marque +1",
+            )
+            .field(cards::inline("🗓️ Coup d'envoi", cards::when(kickoff))),
+        None => {
+            let state = match (game.live_status.as_deref(), game.live_clock.as_deref()) {
+                (Some("HT"), _) => "⏸️ Mi-temps".to_owned(),
+                (Some("FT"), _) => "🏁 Terminé, résultat en cours de validation".to_owned(),
+                (_, Some(clock)) if !clock.is_empty() => format!("🔴 EN DIRECT · {clock}"),
+                _ => "🔴 EN DIRECT".to_owned(),
+            };
+            cards::base(competition, MADRID, logo).title(state).description(format!(
+                "{}\n🔒 Pronostics et paris fermés · paris en direct : `/halamadrid prochainbut`",
+                cards::scoreline(game.live_madrid, game.live_adverse, &game.adversaire)
             ))
         }
-        None if game.open(now) => embed.title(format!("⚪ Real Madrid – {} ⚽", game.adversaire)).description(format!(
-            "Coup d'envoi <t:{kickoff}:F> (<t:{kickoff}:R>)\nPronostics et paris ouverts jusqu'au coup d'envoi : boutons ci-dessous, `/halamadrid prono` et `/halamadrid parier`.\n\nBarème : score exact **3 pts** · bonne issue **1 pt** · buteur madrilène annoncé qui marque **+1**."
-        )),
-        None => {
-            let state = match game.live_status.as_deref() {
-                Some("PAUSED") => "⏸️ Mi-temps",
-                Some("FINISHED") => "🏁 Terminé, en attente de validation",
-                _ => "🔴 En direct",
-            };
-            embed
-                .title(format!("⚪ Real Madrid {} – {} {}", game.live_madrid, game.live_adverse, game.adversaire))
-                .description(format!("{state} · coup d'envoi <t:{kickoff}:t>\n🔒 Pronostics et paris fermés : place au match !"))
-        }
     };
-    let embed = embed
-        .field(field("Pronostics", tendencies_text(pronos, &game.adversaire), false))
-        .field(field("Paris ($ fictifs)", bets_text(bets, &game.adversaire), false))
-        .footer(footer("¡Hala Madrid y nada más!"))
-        .build();
+    embed = embed
+        .field(field("📊 Pronostics", tendencies_bars(pronos, &game.adversaire), false))
+        .field(field("💰 Paris ($ fictifs)", bets_text(bets, &game.adversaire), false))
+        .footer(footer(cards::FOOTER))
+        .timestamp(crate::discord::embed::timestamp(kickoff));
+    let cri = || {
+        Component::Button(
+            button(encode_custom_id(NAMESPACE, "cri", &game.id, None), "Lancer un cri", ButtonStyle::Secondary)
+                .with_emoji("📣"),
+        )
+    };
+    let madridista = || {
+        Component::Button(
+            button(encode_custom_id(NAMESPACE, "madridista", &game.id, None), "Madridista", ButtonStyle::Secondary)
+                .with_emoji("⚪"),
+        )
+    };
     let mut components = Vec::new();
     if game.open(now) {
         components.push(row(vec![
@@ -399,18 +558,13 @@ fn match_message(game: &Match, pronos: &[Prono], bets: &[(Outcome, i64)], now: D
                 button(encode_custom_id(NAMESPACE, "prono", &game.id, None), "Mon prono", ButtonStyle::Primary)
                     .with_emoji("⚽"),
             ),
-            Component::Button(
-                button(encode_custom_id(NAMESPACE, "cri", &game.id, None), "Lancer un cri", ButtonStyle::Secondary)
-                    .with_emoji("📣"),
-            ),
+            cri(),
+            madridista(),
         ]));
     } else if game.settled().is_none() {
-        components.push(row(vec![Component::Button(
-            button(encode_custom_id(NAMESPACE, "cri", &game.id, None), "Lancer un cri", ButtonStyle::Secondary)
-                .with_emoji("📣"),
-        )]));
+        components.push(row(vec![cri(), madridista()]));
     }
-    Outgoing::embeds(vec![embed]).with_components(components)
+    Outgoing::embeds(vec![embed.build()]).with_components(components)
 }
 
 async fn bet_pairs(ctx: &Ctx, match_id: &str) -> Result<Vec<(Outcome, i64)>> {
@@ -572,35 +726,112 @@ async fn wallet(ix: &Ix, guild: &str) -> Result<()> {
     ix.reply(Reply::embed(embed).hidden()).await
 }
 
-/// Annonce un but dans le salon du match (commande `/golazo` ou suivi automatique).
+/// Détails d'un but : buteur, minute, penalty, contre son camp.
+#[derive(Clone, Debug, Default)]
+pub struct GoalInfo<'a> {
+    pub scorer: Option<&'a str>,
+    pub minute: Option<&'a str>,
+    pub penalty: bool,
+    pub own_goal: bool,
+    /// Photo du buteur.
+    pub headshot: Option<&'a str>,
+}
+
+/// Ligne « ⚽ Mbappé 23' (penalty) ».
+fn goal_line(goal: &GoalInfo<'_>) -> Option<String> {
+    let mut parts = Vec::new();
+    if let Some(scorer) = goal.scorer {
+        parts.push(scorer.to_owned());
+    }
+    if let Some(minute) = goal.minute.filter(|m| !m.is_empty()) {
+        parts.push(minute.to_owned());
+    }
+    if goal.penalty {
+        parts.push("(penalty)".to_owned());
+    }
+    if goal.own_goal {
+        parts.push("(contre son camp)".to_owned());
+    }
+    (!parts.is_empty()).then(|| format!("⚽ {}", parts.join(" ")))
+}
+
+/// Annonce un but (commande `/golazo` ou suivi automatique) dans le fil du match :
+/// photo du buteur, ping du rôle Madridista pour un but du Real, « qui l'avait annoncé »,
+/// puis règlement des paris « prochain but » de la manche.
 pub async fn announce_goal(
     ctx: &Ctx,
     game: &Match,
     madrid: i64,
     adverse: i64,
     madrid_scored: bool,
-    scorer: Option<&str>,
+    goal: GoalInfo<'_>,
 ) {
-    let Some(channel) = parse_id(&game.channel_id) else { return };
-    let mut description = format!("**Real Madrid {madrid} – {adverse} {}**", game.adversaire);
-    if let Some(scorer) = scorer {
-        description.push_str(&format!("\n⚽ {scorer}"));
-        if madrid_scored && let Ok(pronos) = service::pronos(&ctx.db, &game.id).await {
-            let seers: Vec<String> = pronos
-                .iter()
-                .filter(|p| p.buteur.as_deref().is_some_and(|b| service::scorer_matches(b, scorer)))
-                .map(|p| format!("<@{}>", p.user_id))
-                .collect();
-            if !seers.is_empty() {
-                description.push_str(&format!("\n🔮 L'avaient annoncé : {}", seers.join(", ")));
-            }
+    let Some(channel) = parse_id(game.live_channel()) else { return };
+    let scorer = goal.scorer.filter(|_| !goal.own_goal);
+    let title = match (madrid_scored, scorer) {
+        (true, Some(scorer)) => format!("⚽ GOOOOOL ! {scorer}"),
+        (true, None) => pick(BUTS).to_owned(),
+        (false, _) => pick(BUTS_ENCAISSES).to_owned(),
+    };
+    let mut embed = cards::base(
+        if madrid_scored { "But du Real" } else { "But adverse" },
+        if madrid_scored { MADRID } else { cards::ALERT },
+        goal.headshot.or(if madrid_scored { Some(cards::REAL_LOGO) } else { game.rival_logo.as_deref() }),
+    )
+    .title(title)
+    .description(cards::scoreline(madrid, adverse, &game.adversaire));
+    if let Some(line) = goal_line(&goal) {
+        embed = embed.field(field("Le but", line, false));
+    }
+    if madrid_scored
+        && let Some(scorer) = scorer
+        && let Ok(pronos) = service::pronos(&ctx.db, &game.id).await
+    {
+        let seers: Vec<String> = pronos
+            .iter()
+            .filter(|p| p.buteur.as_deref().is_some_and(|b| service::scorer_matches(b, scorer)))
+            .map(|p| format!("<@{}>", p.user_id))
+            .collect();
+        if !seers.is_empty() {
+            embed = embed.field(field("🔮 L'avaient annoncé", seers.join(", "), false));
         }
     }
-    let (title, color) = if madrid_scored { (pick(BUTS), MADRID) } else { (pick(BUTS_ENCAISSES), BARCA) };
-    let embed = EmbedBuilder::new().color(color).title(title).description(description).build();
-    if let Err(error) = messages::send(ctx, channel, &Outgoing::embeds(vec![embed])).await {
+    // Manche « prochain but » : buts marqués avant celui-ci.
+    let round = (madrid + adverse - 1).max(0);
+    let result = if madrid_scored { service::NextGoal::Real } else { service::NextGoal::Adverse };
+    if let Some(line) = settle_live_round(ctx, game, round, result).await {
+        embed = embed.field(field("🎲 Prochain but", line, false));
+    }
+    let mut message = Outgoing::embeds(vec![embed.footer(footer(cards::FOOTER)).build()]);
+    if madrid_scored
+        && let Ok(auto) = service::auto(&ctx.db, &game.guild_id).await
+        && let Some(role) = auto.madridista_role_id.as_deref().and_then(parse_id)
+    {
+        message.content = Some(format!("<@&{role}> ⚽"));
+        message.mentions = messages::Mentions::Explicit { users: Vec::new(), roles: vec![role], everyone: false };
+    }
+    if let Err(error) = messages::send(ctx, channel, &message).await {
         tracing::warn!(?error, "clásico : annonce d'un but");
     }
+}
+
+/// Règle une manche « prochain but » ; renvoie la ligne des gagnants (None : aucun pari).
+pub async fn settle_live_round(ctx: &Ctx, game: &Match, round: i64, result: service::NextGoal) -> Option<String> {
+    let settled = match service::settle_live_round(&ctx.db, &game.guild_id, &game.id, round, result).await {
+        Ok(settled) if !settled.is_empty() => settled,
+        Ok(_) => return None,
+        Err(error) => {
+            tracing::warn!(?error, "clásico : règlement d'un pari « prochain but »");
+            return None;
+        }
+    };
+    let winners: Vec<String> = settled
+        .iter()
+        .filter(|(_, mise, gain)| gain > mise)
+        .take(5)
+        .map(|(user, mise, gain)| format!("<@{user}> +{}", money(gain - mise)))
+        .collect();
+    Some(if winners.is_empty() { "Personne ne l'avait vu venir. 🫣".to_owned() } else { winners.join(" · ") })
 }
 
 pub async fn handle_golazo(ix: &Ix, options: &Options) -> Result<()> {
@@ -620,7 +851,8 @@ pub async fn handle_golazo(ix: &Ix, options: &Options) -> Result<()> {
     ix.defer(true).await?;
     service::set_live(&ix.ctx.db, &game.id, madrid, adverse, None).await?;
     let scorer = clean_scorer(options.string("buteur").as_deref());
-    announce_goal(&ix.ctx, &game, madrid, adverse, !adverse_goal, scorer.as_deref()).await;
+    let goal = GoalInfo { scorer: scorer.as_deref(), ..GoalInfo::default() };
+    announce_goal(&ix.ctx, &game, madrid, adverse, !adverse_goal, goal).await;
     refresh(&ix.ctx, &guild, &game.id).await;
     ix.edit_text(format!("Score en direct : **{madrid} – {adverse}**.")).await
 }
@@ -657,16 +889,19 @@ fn result_embed(
         Outcome::Nul => "Match nul. On reviendra plus forts. ⚪",
         Outcome::Defaite => "Soirée difficile. Le Real revient toujours. ⚪",
     };
-    let scorers = game.buteurs.as_deref().or(None);
-    let mut embed = EmbedBuilder::new()
-        .color(MADRID)
-        .title(format!("Real Madrid {madrid} – {adverse} {}", game.adversaire))
-        .description(match scorers {
-            Some(scorers) if !scorers.trim().is_empty() => format!("{headline}\n⚽ {scorers}"),
-            _ => headline.to_owned(),
-        })
-        .field(field("🎯 Score exact", exact, false))
-        .field(field("🏆 Podium du soir", podium(pronos), false));
+    let scorers = game.buteurs.as_deref().filter(|b| !b.trim().is_empty());
+    let mut embed = cards::base(
+        cards::league_label(game.league.as_deref()),
+        if Outcome::of(madrid, adverse) == Outcome::Defaite { cards::ALERT } else { MADRID },
+        game.rival_logo.as_deref(),
+    )
+    .title(headline)
+    .description(match scorers {
+        Some(scorers) => format!("{}\n⚽ {scorers}", cards::scoreline(madrid, adverse, &game.adversaire)),
+        None => cards::scoreline(madrid, adverse, &game.adversaire),
+    })
+    .field(cards::inline("🎯 Score exact", exact))
+    .field(cards::inline("🏆 Podium du soir", podium(pronos)));
     if let Some(worst) = service::worst(pronos, madrid, adverse).filter(|p| p.points == Some(0)) {
         embed = embed.field(field(
             "🙈 Pire prono de la soirée",
@@ -698,7 +933,10 @@ fn result_embed(
             false,
         ));
     }
-    embed.footer(footer("Classement et badges : /halamadrid classement")).build()
+    embed
+        .footer(footer("Classement et badges : /halamadrid classement"))
+        .timestamp(crate::discord::embed::now())
+        .build()
 }
 
 async fn settle(ix: &Ix, options: &Options, guild: &str) -> Result<()> {
@@ -716,30 +954,54 @@ async fn settle(ix: &Ix, options: &Options, guild: &str) -> Result<()> {
         }
     };
     let buteurs = options.string("buteurs").map(|b| b.trim().to_owned()).filter(|b| !b.is_empty());
+    // Rôle de l'option, sinon celui du mode automatique.
+    let role = match options.role("role_clown") {
+        Some(role) => Some(role),
+        None => service::auto(&ix.ctx.db, guild).await?.clown_role_id.as_deref().and_then(parse_id),
+    };
     ix.defer(false).await?;
-    service::settle(&ix.ctx.db, &game, madrid, adverse, buteurs.as_deref()).await?;
-    refresh(&ix.ctx, guild, &game.id).await;
-    let pronos = service::pronos(&ix.ctx.db, &game.id).await?;
-    let bets = service::bets(&ix.ctx.db, &game.id).await?;
-    let clowns = match options.role("role_clown") {
+    let embed = settle_match(&ix.ctx, guild, &game, madrid, adverse, buteurs.as_deref(), role).await?;
+    ix.edit(Reply::embed(embed)).await
+}
+
+/// Règle le match (points, gains, rôle clown) et renvoie la carte du résultat.
+/// Partagé par `/halamadrid resultat` et le résultat automatique.
+pub async fn settle_match(
+    ctx: &Ctx,
+    guild: &str,
+    game: &Match,
+    madrid: i64,
+    adverse: i64,
+    buteurs: Option<&str>,
+    clown_role: Option<twilight_model::id::Id<twilight_model::id::marker::RoleMarker>>,
+) -> Result<Embed> {
+    service::settle(&ctx.db, game, madrid, adverse, buteurs).await?;
+    // Paris « prochain but » encore ouverts : plus de but, ceux qui l'avaient dit gagnent.
+    for round in service::open_live_rounds(&ctx.db, &game.id).await? {
+        settle_live_round(ctx, game, round, service::NextGoal::Aucun).await;
+    }
+    refresh(ctx, guild, &game.id).await;
+    let pronos = service::pronos(&ctx.db, &game.id).await?;
+    let bets = service::bets(&ctx.db, &game.id).await?;
+    let clowns = match clown_role {
         Some(role) if Outcome::of(madrid, adverse) != Outcome::Defaite => {
-            give_clown_role(ix, guild, role, &pronos, &bets).await
+            give_clown_role(ctx, guild, role, &pronos, &bets).await
         }
         _ => 0,
     };
-    let game = service::get(&ix.ctx.db, guild, &game.id).await?.unwrap_or(game);
-    ix.edit(Reply::embed(result_embed(&game, &pronos, &bets, madrid, adverse, clowns))).await
+    let game = service::get(&ctx.db, guild, &game.id).await?.unwrap_or_else(|| game.clone());
+    Ok(result_embed(&game, &pronos, &bets, madrid, adverse, clowns))
 }
 
 /// Rôle clown pour 24 h à ceux qui ont annoncé (ou parié sur) la victoire de l'adversaire.
 async fn give_clown_role(
-    ix: &Ix,
+    ctx: &Ctx,
     guild: &str,
     role: twilight_model::id::Id<twilight_model::id::marker::RoleMarker>,
     pronos: &[Prono],
     bets: &[service::Bet],
 ) -> usize {
-    let Some(guild_id) = ix.guild_id() else { return 0 };
+    let Some(guild_id) = parse_id(guild) else { return 0 };
     let mut users: Vec<&str> = pronos.iter().filter(|p| p.adverse > p.madrid).map(|p| p.user_id.as_str()).collect();
     users.extend(bets.iter().filter(|b| b.outcome() == Outcome::Defaite).map(|b| b.user_id.as_str()));
     users.sort_unstable();
@@ -748,10 +1010,10 @@ async fn give_clown_role(
     let mut given = 0;
     for user in users {
         let Some(user_id) = parse_id(user) else { continue };
-        match ix.ctx.http.add_guild_member_role(guild_id, user_id, role).await {
+        match ctx.http.add_guild_member_role(guild_id, user_id, role).await {
             Ok(_) => {
                 given += 1;
-                if let Err(error) = service::add_clown(&ix.ctx.db, guild, user, &role.to_string(), until).await {
+                if let Err(error) = service::add_clown(&ctx.db, guild, user, &role.to_string(), until).await {
                     tracing::warn!(?error, "clásico : échéance du rôle clown");
                 }
             }
@@ -976,6 +1238,7 @@ pub async fn button_pressed(ix: &Ix, custom_id: &CustomId<'_>) -> Result<()> {
     }
     match custom_id.action {
         "cri" => cri(ix).await,
+        "madridista" => toggle_madridista(ix).await,
         "motm" => vote_motm(ix, custom_id).await,
         "prono" => {
             let goals = |id: &str, placeholder: &str| {
@@ -1039,6 +1302,12 @@ mod tests {
             score_madrid: None,
             score_adverse: None,
             buteurs: None,
+            external_id: None,
+            live_clock: None,
+            league: None,
+            rival_logo: None,
+            thread_id: None,
+            announced: String::new(),
         }
     }
 
@@ -1080,8 +1349,15 @@ mod tests {
         assert_eq!(match_message(&upcoming, &[], &[], DbTime::now()).components.len(), 1);
         let mut live = game(-1);
         live.live_madrid = 2;
+        live.live_clock = Some("67'".into());
         let message = match_message(&live, &[], &[], DbTime::now());
-        assert!(message.embeds[0].title.as_deref().unwrap_or_default().contains("2 – 0"));
+        let embed = &message.embeds[0];
+        assert_eq!(embed.title.as_deref(), Some("🔴 EN DIRECT · 67'"));
+        assert!(embed.description.as_deref().unwrap_or_default().contains("2 – 0"));
+        // Pendant le match : cri et Madridista, plus de prono.
+        assert_eq!(message.components.len(), 1);
+        live.live_status = Some("HT".into());
+        assert_eq!(match_message(&live, &[], &[], DbTime::now()).embeds[0].title.as_deref(), Some("⏸️ Mi-temps"));
         live.score_madrid = Some(2);
         live.score_adverse = Some(0);
         assert!(match_message(&live, &[], &[], DbTime::now()).components.is_empty());
