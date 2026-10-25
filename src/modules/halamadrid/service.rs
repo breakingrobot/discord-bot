@@ -26,6 +26,17 @@ pub struct Match {
     pub score_madrid: Option<i64>,
     pub score_adverse: Option<i64>,
     pub buteurs: Option<String>,
+    /// Événement de l'API ESPN suivi (NULL : pas encore relié).
+    pub external_id: Option<String>,
+    /// Minute en direct, ex : « 67' ».
+    pub live_clock: Option<String>,
+    /// Compétition ESPN (ex : `esp.1`).
+    pub league: Option<String>,
+    pub rival_logo: Option<String>,
+    /// Fil Discord des annonces en direct.
+    pub thread_id: Option<String>,
+    /// Annonces déjà publiées, séparées par des virgules.
+    pub announced: String,
 }
 
 impl Match {
@@ -36,6 +47,16 @@ impl Match {
     /// Pronostics et paris encore ouverts (avant le coup d'envoi, match pas réglé).
     pub fn open(&self, now: DbTime) -> bool {
         self.settled().is_none() && now.0 < self.kickoff.0
+    }
+
+    /// Cette annonce (kickoff, ht, ft, lineups, rouge:…) a-t-elle déjà été publiée ?
+    pub fn has_announced(&self, key: &str) -> bool {
+        self.announced.split(',').any(|known| known == key)
+    }
+
+    /// Salon des annonces en direct : le fil du match s'il existe.
+    pub fn live_channel(&self) -> &str {
+        self.thread_id.as_deref().unwrap_or(&self.channel_id)
     }
 }
 
@@ -155,7 +176,7 @@ pub fn odds(bets: &[(Outcome, i64)], outcome: Outcome) -> Option<f64> {
     (on > 0).then(|| pot as f64 / on as f64)
 }
 
-const MATCH_COLUMNS: &str = r#""id", "guildId", "adversaire", "kickoff", "channelId", "messageId", "liveMadrid", "liveAdverse", "liveStatus", "scoreMadrid", "scoreAdverse", "buteurs""#;
+const MATCH_COLUMNS: &str = r#""id", "guildId", "adversaire", "kickoff", "channelId", "messageId", "liveMadrid", "liveAdverse", "liveStatus", "scoreMadrid", "scoreAdverse", "buteurs", "externalId", "liveClock", "league", "rivalLogo", "threadId", "announced""#;
 
 /// Dernier match non réglé du serveur.
 pub async fn current(db: &SqlitePool, guild_id: &str) -> Result<Option<Match>> {
@@ -243,6 +264,62 @@ pub async fn set_live(db: &SqlitePool, id: &str, madrid: i64, adverse: i64, stat
     .execute(db)
     .await?;
     Ok(())
+}
+
+/// Événement de l'API relié au match : identifiant, compétition, minute, logo adverse.
+pub async fn set_feed(
+    db: &SqlitePool,
+    id: &str,
+    external_id: &str,
+    league: &str,
+    clock: &str,
+    rival_logo: Option<&str>,
+) -> Result<()> {
+    sqlx::query(
+        r#"UPDATE "MadridMatch" SET "externalId" = ?, "league" = ?, "liveClock" = ?,
+           "rivalLogo" = COALESCE(?, "rivalLogo") WHERE "id" = ?"#,
+    )
+    .bind(external_id)
+    .bind(league)
+    .bind(clock)
+    .bind(rival_logo)
+    .bind(id)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+/// Note une annonce comme publiée (une seule fois par match).
+pub async fn mark_announced(db: &SqlitePool, id: &str, key: &str) -> Result<()> {
+    sqlx::query(
+        r#"UPDATE "MadridMatch" SET "announced" = CASE WHEN "announced" = '' THEN ? ELSE "announced" || ',' || ? END
+           WHERE "id" = ?"#,
+    )
+    .bind(key)
+    .bind(key)
+    .bind(id)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+pub async fn set_thread(db: &SqlitePool, id: &str, thread_id: &str) -> Result<()> {
+    sqlx::query(r#"UPDATE "MadridMatch" SET "threadId" = ? WHERE "id" = ?"#)
+        .bind(thread_id)
+        .bind(id)
+        .execute(db)
+        .await?;
+    Ok(())
+}
+
+/// Ce serveur a-t-il déjà un match pour cet événement de l'API ?
+pub async fn has_external(db: &SqlitePool, guild_id: &str, external_id: &str) -> Result<bool> {
+    let row: Option<(i64,)> = sqlx::query_as(r#"SELECT 1 FROM "MadridMatch" WHERE "guildId" = ? AND "externalId" = ?"#)
+        .bind(guild_id)
+        .bind(external_id)
+        .fetch_optional(db)
+        .await?;
+    Ok(row.is_some())
 }
 
 pub async fn pronos(db: &SqlitePool, match_id: &str) -> Result<Vec<Prono>> {
@@ -604,6 +681,221 @@ pub async fn set_reactions(db: &SqlitePool, guild_id: &str, on: bool) -> Result<
     Ok(())
 }
 
+/// Mode automatique d'un serveur : salon où publier les matchs, rôle clown du résultat.
+#[derive(Clone, Debug, Default, FromRow)]
+#[sqlx(rename_all = "camelCase")]
+pub struct Auto {
+    pub auto_channel_id: Option<String>,
+    pub clown_role_id: Option<String>,
+    pub madridista_role_id: Option<String>,
+}
+
+pub async fn auto(db: &SqlitePool, guild_id: &str) -> Result<Auto> {
+    let row: Option<Auto> = sqlx::query_as(
+        r#"SELECT "autoChannelId", "clownRoleId", "madridistaRoleId" FROM "MadridConfig" WHERE "guildId" = ?"#,
+    )
+    .bind(guild_id)
+    .fetch_optional(db)
+    .await?;
+    Ok(row.unwrap_or_default())
+}
+
+pub async fn set_auto(db: &SqlitePool, guild_id: &str, auto: &Auto) -> Result<()> {
+    sqlx::query(
+        r#"INSERT INTO "MadridConfig" ("guildId", "autoChannelId", "clownRoleId", "madridistaRoleId") VALUES (?, ?, ?, ?)
+           ON CONFLICT ("guildId") DO UPDATE SET "autoChannelId" = excluded."autoChannelId",
+           "clownRoleId" = excluded."clownRoleId", "madridistaRoleId" = excluded."madridistaRoleId""#,
+    )
+    .bind(guild_id)
+    .bind(&auto.auto_channel_id)
+    .bind(&auto.clown_role_id)
+    .bind(&auto.madridista_role_id)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+/// Serveurs en mode automatique : (serveur, salon).
+pub async fn auto_guilds(db: &SqlitePool) -> Result<Vec<(String, String)>> {
+    Ok(sqlx::query_as(r#"SELECT "guildId", "autoChannelId" FROM "MadridConfig" WHERE "autoChannelId" IS NOT NULL"#)
+        .fetch_all(db)
+        .await?)
+}
+
+/// Match ouvert automatiquement, déjà relié à l'événement de l'API.
+pub async fn create_external(
+    db: &SqlitePool,
+    guild_id: &str,
+    event: &super::espn::Event,
+    adversaire: &str,
+    channel_id: &str,
+) -> Result<String> {
+    let id = create(db, guild_id, adversaire, DbTime(event.kickoff), channel_id, "auto").await?;
+    set_feed(db, &id, &event.id, &event.league, &event.clock, event.opponent_logo.as_deref()).await?;
+    Ok(id)
+}
+
+// ---------------------------------------------------------------------------
+// Paris en direct « prochain but »
+
+/// Camp du prochain but.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NextGoal {
+    Real,
+    Adverse,
+    Aucun,
+}
+
+impl NextGoal {
+    pub const ALL: [Self; 3] = [Self::Real, Self::Adverse, Self::Aucun];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Real => "REAL",
+            Self::Adverse => "ADVERSE",
+            Self::Aucun => "AUCUN",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|n| n.as_str() == raw)
+    }
+}
+
+/// Pari mutuel sur une manche « prochain but » (même règle que les paris d'avant-match).
+pub fn next_goal_payouts(bets: &[(NextGoal, i64)], result: NextGoal) -> Vec<i64> {
+    let as_outcome = |n: NextGoal| match n {
+        NextGoal::Real => Outcome::Victoire,
+        NextGoal::Aucun => Outcome::Nul,
+        NextGoal::Adverse => Outcome::Defaite,
+    };
+    payouts(&bets.iter().map(|(n, mise)| (as_outcome(*n), *mise)).collect::<Vec<_>>(), as_outcome(result))
+}
+
+#[derive(Clone, Debug, FromRow)]
+#[sqlx(rename_all = "camelCase")]
+pub struct LiveBet {
+    pub user_id: String,
+    pub choice: String,
+    pub mise: i64,
+}
+
+impl LiveBet {
+    pub fn next_goal(&self) -> NextGoal {
+        NextGoal::parse(&self.choice).unwrap_or(NextGoal::Aucun)
+    }
+}
+
+/// Mise sur le prochain but de la manche `round` (buts déjà marqués) : débite la cagnotte.
+pub async fn place_live_bet(
+    db: &SqlitePool,
+    guild_id: &str,
+    match_id: &str,
+    round: i64,
+    user_id: &str,
+    choice: NextGoal,
+    mise: i64,
+) -> Result<Result<i64, String>> {
+    let mut tx = db.begin().await?;
+    let previous: Option<(i64,)> = sqlx::query_as(
+        r#"SELECT "mise" FROM "MadridLiveBet" WHERE "matchId" = ? AND "round" = ? AND "userId" = ? AND "gain" IS NULL"#,
+    )
+    .bind(match_id)
+    .bind(round)
+    .bind(user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let wallet: Option<(i64,)> =
+        sqlx::query_as(r#"SELECT "balance" FROM "MadridWallet" WHERE "guildId" = ? AND "userId" = ?"#)
+            .bind(guild_id)
+            .bind(user_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let available = wallet.map_or(STARTING_BALANCE, |(b,)| b) + previous.map_or(0, |(m,)| m);
+    if mise > available {
+        return Ok(Err(format!(
+            "Cagnotte insuffisante : **{} $** disponibles.",
+            crate::util::format::format_price(available as f64)
+        )));
+    }
+    sqlx::query(
+        r#"INSERT INTO "MadridWallet" ("guildId", "userId", "balance") VALUES (?, ?, ?)
+           ON CONFLICT ("guildId", "userId") DO UPDATE SET "balance" = excluded."balance""#,
+    )
+    .bind(guild_id)
+    .bind(user_id)
+    .bind(available - mise)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        r#"INSERT INTO "MadridLiveBet" ("matchId", "round", "userId", "choice", "mise") VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT ("matchId", "round", "userId") DO UPDATE SET "choice" = excluded."choice", "mise" = excluded."mise""#,
+    )
+    .bind(match_id)
+    .bind(round)
+    .bind(user_id)
+    .bind(choice.as_str())
+    .bind(mise)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Ok(available - mise))
+}
+
+/// Paris non réglés d'une manche.
+pub async fn open_live_bets(db: &SqlitePool, match_id: &str, round: i64) -> Result<Vec<LiveBet>> {
+    Ok(sqlx::query_as(
+        r#"SELECT "userId", "choice", "mise" FROM "MadridLiveBet" WHERE "matchId" = ? AND "round" = ? AND "gain" IS NULL"#,
+    )
+    .bind(match_id)
+    .bind(round)
+    .fetch_all(db)
+    .await?)
+}
+
+/// Manches encore ouvertes (normalement une seule : celle du score actuel).
+pub async fn open_live_rounds(db: &SqlitePool, match_id: &str) -> Result<Vec<i64>> {
+    let rows: Vec<(i64,)> = sqlx::query_as(
+        r#"SELECT DISTINCT "round" FROM "MadridLiveBet" WHERE "matchId" = ? AND "gain" IS NULL ORDER BY "round""#,
+    )
+    .bind(match_id)
+    .fetch_all(db)
+    .await?;
+    Ok(rows.into_iter().map(|(round,)| round).collect())
+}
+
+/// Règle une manche : gains versés, renvoie (membre, mise, gain) pour l'annonce.
+pub async fn settle_live_round(
+    db: &SqlitePool,
+    guild_id: &str,
+    match_id: &str,
+    round: i64,
+    result: NextGoal,
+) -> Result<Vec<(String, i64, i64)>> {
+    let bets = open_live_bets(db, match_id, round).await?;
+    let gains = next_goal_payouts(&bets.iter().map(|b| (b.next_goal(), b.mise)).collect::<Vec<_>>(), result);
+    let mut tx = db.begin().await?;
+    let mut settled = Vec::new();
+    for (bet, gain) in bets.iter().zip(gains) {
+        sqlx::query(r#"UPDATE "MadridLiveBet" SET "gain" = ? WHERE "matchId" = ? AND "round" = ? AND "userId" = ?"#)
+            .bind(gain)
+            .bind(match_id)
+            .bind(round)
+            .bind(&bet.user_id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query(r#"UPDATE "MadridWallet" SET "balance" = "balance" + ? WHERE "guildId" = ? AND "userId" = ?"#)
+            .bind(gain)
+            .bind(guild_id)
+            .bind(&bet.user_id)
+            .execute(&mut *tx)
+            .await?;
+        settled.push((bet.user_id.clone(), bet.mise, gain));
+    }
+    tx.commit().await?;
+    Ok(settled)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -651,6 +943,14 @@ mod tests {
         assert_eq!(payouts(&[(Victoire, 500), (Nul, 200)], Defaite), vec![500, 200]);
         assert_eq!(odds(&bets, Victoire), Some(2.5));
         assert_eq!(odds(&[(Victoire, 100)], Nul), None);
+    }
+
+    #[test]
+    fn next_goal_bets_follow_the_same_rule() {
+        let bets = [(NextGoal::Real, 1000), (NextGoal::Adverse, 1000), (NextGoal::Aucun, 2000)];
+        assert_eq!(next_goal_payouts(&bets, NextGoal::Real), vec![4000, 0, 0]);
+        assert_eq!(next_goal_payouts(&[(NextGoal::Real, 500)], NextGoal::Adverse), vec![500]);
+        assert_eq!(NextGoal::parse("AUCUN"), Some(NextGoal::Aucun));
     }
 
     #[test]
