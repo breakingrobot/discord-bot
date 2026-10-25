@@ -510,9 +510,12 @@ fn match_message(game: &Match, pronos: &[Prono], bets: &[(Outcome, i64)], now: D
             cards::base(competition, MADRID, logo)
                 .title("🏁 Terminé")
                 .description(format!(
-                    "{}\n{}\n⚽ {scorers}",
+                    "{}\n{}",
                     cards::scoreline(madrid, adverse, &game.adversaire),
-                    outcome_label(Outcome::of(madrid, adverse), &game.adversaire)
+                    cards::spoiler(&format!(
+                        "{}\n⚽ {scorers}",
+                        outcome_label(Outcome::of(madrid, adverse), &game.adversaire)
+                    ))
                 ))
         }
         None if game.open(now) => cards::base(competition, MADRID, logo)
@@ -767,22 +770,16 @@ pub async fn announce_goal(
     goal: GoalInfo<'_>,
 ) {
     let Some(channel) = parse_id(game.live_channel()) else { return };
+    // Tout ce qui trahit le match est masqué (spoiler) : titre et couleur neutres,
+    // score, camp, buteur, gagnants des paris et photo derrière un clic.
     let scorer = goal.scorer.filter(|_| !goal.own_goal);
-    let title = match (madrid_scored, scorer) {
-        (true, Some(scorer)) => format!("⚽ GOOOOOL ! {scorer}"),
-        (true, None) => pick(BUTS).to_owned(),
-        (false, _) => pick(BUTS_ENCAISSES).to_owned(),
-    };
-    let mut embed = cards::base(
-        if madrid_scored { "But du Real" } else { "But adverse" },
-        if madrid_scored { MADRID } else { cards::ALERT },
-        goal.headshot.or(if madrid_scored { Some(cards::REAL_LOGO) } else { game.rival_logo.as_deref() }),
-    )
-    .title(title)
-    .description(cards::scoreline(madrid, adverse, &game.adversaire));
-    if let Some(line) = goal_line(&goal) {
-        embed = embed.field(field("Le but", line, false));
-    }
+    let side = if madrid_scored { "Real Madrid" } else { game.adversaire.as_str() };
+    let cheer = if madrid_scored { pick(BUTS) } else { pick(BUTS_ENCAISSES) };
+    let detail = goal_line(&goal).map(|line| format!("\n{line}")).unwrap_or_default();
+    let mut embed = cards::base("But", cards::NEUTRAL, None)
+        .title("⚽ BUT !")
+        .description(cards::scoreline(madrid, adverse, &game.adversaire))
+        .field(field("Le but", cards::spoiler(&format!("**{side}** — {cheer}{detail}")), false));
     if madrid_scored
         && let Some(scorer) = scorer
         && let Ok(pronos) = service::pronos(&ctx.db, &game.id).await
@@ -793,26 +790,58 @@ pub async fn announce_goal(
             .map(|p| format!("<@{}>", p.user_id))
             .collect();
         if !seers.is_empty() {
-            embed = embed.field(field("🔮 L'avaient annoncé", seers.join(", "), false));
+            embed = embed.field(field("🔮 L'avaient annoncé", cards::spoiler(&seers.join(", ")), false));
         }
     }
     // Manche « prochain but » : buts marqués avant celui-ci.
     let round = (madrid + adverse - 1).max(0);
     let result = if madrid_scored { service::NextGoal::Real } else { service::NextGoal::Adverse };
     if let Some(line) = settle_live_round(ctx, game, round, result).await {
-        embed = embed.field(field("🎲 Prochain but", line, false));
+        embed = embed.field(field("🎲 Prochain but", cards::spoiler(&line), false));
     }
-    let mut message = Outgoing::embeds(vec![embed.footer(footer(cards::FOOTER)).build()]);
-    if madrid_scored
-        && let Ok(auto) = service::auto(&ctx.db, &game.guild_id).await
-        && let Some(role) = auto.madridista_role_id.as_deref().and_then(parse_id)
-    {
-        message.content = Some(format!("<@&{role}> ⚽"));
-        message.mentions = messages::Mentions::Explicit { users: Vec::new(), roles: vec![role], everyone: false };
+    let embeds = [embed.footer(footer(cards::FOOTER)).build()];
+    // Ping Madridista à chaque but, des deux côtés : la notification ne dit pas qui a marqué.
+    let role = match service::auto(&ctx.db, &game.guild_id).await {
+        Ok(auto) => auto.madridista_role_id.as_deref().and_then(parse_id::<twilight_model::id::marker::RoleMarker>),
+        Err(_) => None,
+    };
+    let content = role.map(|role| format!("<@&{role}> ⚽ But !"));
+    let allowed =
+        messages::Mentions::Explicit { users: Vec::new(), roles: role.into_iter().collect(), everyone: false }
+            .to_allowed();
+    // Photo du buteur en pièce jointe masquée (une image d'embed ne peut pas l'être).
+    let photo = match goal.headshot {
+        Some(url) => spoiler_photo(url).await,
+        None => None,
+    };
+    let uploads: Vec<_> = photo.into_iter().collect();
+    let mut request = ctx.http.create_message(channel).embeds(&embeds).allowed_mentions(Some(&allowed));
+    if let Some(content) = &content {
+        request = request.content(content);
     }
-    if let Err(error) = messages::send(ctx, channel, &message).await {
+    if !uploads.is_empty() {
+        request = request.attachments(&uploads);
+    }
+    if let Err(error) = request.await {
         tracing::warn!(?error, "clásico : annonce d'un but");
     }
+}
+
+/// Photo téléchargée et jointe sous un nom `SPOILER_…` (masquée par Discord) ; `None` si indisponible.
+async fn spoiler_photo(url: &str) -> Option<twilight_model::http::attachment::Attachment> {
+    const MAX_BYTES: usize = 4 * 1024 * 1024;
+    let response = crate::util::http::client().get(url).timeout(Duration::from_secs(5)).send().await.ok()?;
+    let bytes = response.error_for_status().ok()?.bytes().await.ok()?;
+    if bytes.is_empty() || bytes.len() > MAX_BYTES {
+        return None;
+    }
+    let extension =
+        if url.to_lowercase().ends_with(".jpg") || url.to_lowercase().ends_with(".jpeg") { "jpg" } else { "png" };
+    Some(twilight_model::http::attachment::Attachment::from_bytes(
+        format!("SPOILER_buteur.{extension}"),
+        bytes.to_vec(),
+        0,
+    ))
 }
 
 /// Règle une manche « prochain but » ; renvoie la ligne des gagnants (None : aucun pari).
@@ -890,22 +919,20 @@ fn result_embed(
         Outcome::Defaite => "Soirée difficile. Le Real revient toujours. ⚪",
     };
     let scorers = game.buteurs.as_deref().filter(|b| !b.trim().is_empty());
-    let mut embed = cards::base(
-        cards::league_label(game.league.as_deref()),
-        if Outcome::of(madrid, adverse) == Outcome::Defaite { cards::ALERT } else { MADRID },
-        game.rival_logo.as_deref(),
-    )
-    .title(headline)
-    .description(match scorers {
-        Some(scorers) => format!("{}\n⚽ {scorers}", cards::scoreline(madrid, adverse, &game.adversaire)),
-        None => cards::scoreline(madrid, adverse, &game.adversaire),
-    })
-    .field(cards::inline("🎯 Score exact", exact))
-    .field(cards::inline("🏆 Podium du soir", podium(pronos)));
+    // Résultat masqué (spoiler) : titre et couleur neutres, tout ce qui trahit le score derrière un clic.
+    let summary = match scorers {
+        Some(scorers) => format!("{headline}\n⚽ {scorers}"),
+        None => headline.to_owned(),
+    };
+    let mut embed = cards::base(cards::league_label(game.league.as_deref()), MADRID, game.rival_logo.as_deref())
+        .title(format!("🏁 Résultat · Real Madrid – {}", game.adversaire))
+        .description(format!("{}\n{}", cards::scoreline(madrid, adverse, &game.adversaire), cards::spoiler(&summary)))
+        .field(cards::inline("🎯 Score exact", cards::spoiler(&exact)))
+        .field(cards::inline("🏆 Podium du soir", cards::spoiler(&podium(pronos))));
     if let Some(worst) = service::worst(pronos, madrid, adverse).filter(|p| p.points == Some(0)) {
         embed = embed.field(field(
             "🙈 Pire prono de la soirée",
-            format!("<@{}> avec **{} – {}**", worst.user_id, worst.madrid, worst.adverse),
+            cards::spoiler(&format!("<@{}> avec **{} – {}**", worst.user_id, worst.madrid, worst.adverse)),
             false,
         ));
     }
@@ -918,18 +945,18 @@ fn result_embed(
     if !bets.is_empty() {
         embed = embed.field(field(
             "💰 Paris",
-            if winners.is_empty() {
+            cards::spoiler(&if winners.is_empty() {
                 "Pas de gagnant : mises rendues ou perdues.".to_owned()
             } else {
                 winners.join("\n")
-            },
+            }),
             false,
         ));
     }
     if clowns > 0 {
         embed = embed.field(field(
             "🤡 Culés repentis",
-            format!("{clowns} membre(s) portent le rôle clown pour 24 h."),
+            cards::spoiler(&format!("{clowns} membre(s) portent le rôle clown pour 24 h.")),
             false,
         ));
     }
