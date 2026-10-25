@@ -564,6 +564,11 @@ Supercoupe d'Espagne, Coupe du monde des clubs, amicaux.
 - **Coup de sifflet final** : résultat automatique avec le score et les buteurs de l'API (points, gains, rôle
   clown, carte du résultat), sans gradé.
 
+**Spoilers** : pour ceux qui regardent en différé, tout ce qui trahit le match est masqué (`||…||`, un clic pour
+voir) : score, camp et buteur de chaque but, gagnants des paris, cartons rouges, statistiques, carte du résultat.
+Les titres et couleurs restent neutres, la photo du buteur part en pièce jointe masquée, et le rôle Madridista est
+pingé à chaque but des deux côtés (« ⚽ But ! ») pour que la notification ne dise pas qui a marqué.
+
 Un match ouvert à la main (`/halamadrid match`) est aussi suivi s'il correspond à un match du Real à moins de 2 h
 près. `/golazo` et `/halamadrid resultat` restent là si l'API ne répond pas. Les rôles clown et Madridista
 demandent au bot « Gérer les rôles », avec ces rôles placés sous le sien.

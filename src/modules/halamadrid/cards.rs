@@ -15,6 +15,8 @@ pub const MADRID: u32 = 0xfebe10;
 pub const BARCA: u32 = 0xa50044;
 /// Rouge des annonces graves (cartons, buts encaissés).
 pub const ALERT: u32 = 0xe74c3c;
+/// Couleur neutre des annonces masquées (ne trahit pas le camp).
+pub const NEUTRAL: u32 = 0x5865f2;
 /// Logo du Real (CDN d'ESPN).
 pub const REAL_LOGO: &str = "https://a.espncdn.com/i/teamlogos/soccer/500/86.png";
 pub const FOOTER: &str = "¡Hala Madrid y nada más!";
@@ -56,9 +58,15 @@ pub fn league_label(league: Option<&str>) -> &'static str {
     }
 }
 
-/// Score mis en avant : « **Real Madrid 2 – 1 FC Barcelone** ».
+/// Texte masqué (spoiler Discord) : un clic pour le voir. Pour ceux qui regardent en différé.
+pub fn spoiler(text: &str) -> String {
+    let text = text.trim();
+    if text.is_empty() { String::new() } else { format!("||{}||", text.replace("||", "|")) }
+}
+
+/// Score mis en avant, masqué : « ## ||Real Madrid 2 – 1 FC Barcelone|| ».
 pub fn scoreline(madrid: i64, adverse: i64, rival: &str) -> String {
-    format!("## Real Madrid  {madrid} – {adverse}  {rival}")
+    format!("## {}", spoiler(&format!("Real Madrid  {madrid} – {adverse}  {rival}")))
 }
 
 pub fn kickoff_card(rival: &str, rival_logo: Option<&str>, madridista: Option<&str>) -> (Option<String>, Embed) {
@@ -111,18 +119,16 @@ pub fn stats_fields(stats: &[Stats]) -> Vec<twilight_model::channel::message::em
     if lines.is_empty() {
         return Vec::new();
     }
-    vec![EmbedFieldBuilder::new("📊 Statistiques · Real | adversaire", lines.join("\n")).build()]
+    vec![EmbedFieldBuilder::new("📊 Statistiques · Real | adversaire", spoiler(&lines.join("\n"))).build()]
 }
 
+/// Carton rouge : titre neutre, joueur, camp et minute masqués.
 pub fn red_card_card(card: &RedCard, rival: &str) -> Embed {
-    let (title, color) = if card.madrid {
-        (format!("🟥 Exclusion côté Real : {}", card.player), ALERT)
-    } else {
-        (format!("🟥 Rouge pour {} ({rival}) ! 😈", card.player), MADRID)
-    };
-    base("Carton rouge", color, None)
-        .title(title)
-        .description(if card.minute.is_empty() { String::new() } else { format!("⏱️ {}", card.minute) })
+    let side = if card.madrid { "Real Madrid".to_owned() } else { format!("{rival} 😈") };
+    let minute = if card.minute.is_empty() { String::new() } else { format!(" · {}", card.minute) };
+    base("Carton rouge", NEUTRAL, None)
+        .title("🟥 Carton rouge")
+        .description(spoiler(&format!("{} ({side}){minute}", card.player)))
         .build()
 }
 
@@ -156,6 +162,18 @@ mod tests {
         assert_eq!(bar(58), "▰▰▰▰▰▰▱▱▱▱ 58 %");
         assert_eq!(bar(100), "▰▰▰▰▰▰▰▰▰▰ 100 %");
         assert_eq!(bar(140), "▰▰▰▰▰▰▰▰▰▰ 140 %");
+    }
+
+    #[test]
+    fn spoilers_hide_text() {
+        assert_eq!(spoiler(" Mbappé 23' "), "||Mbappé 23'||");
+        assert_eq!(spoiler(""), "");
+        assert_eq!(spoiler("a||b"), "||a|b||");
+        assert_eq!(scoreline(2, 1, "FC Barcelone"), "## ||Real Madrid  2 – 1  FC Barcelone||");
+        let card =
+            red_card_card(&RedCard { minute: "70'".into(), player: "Gavi".into(), madrid: false }, "FC Barcelone");
+        assert_eq!(card.title.as_deref(), Some("🟥 Carton rouge"));
+        assert_eq!(card.description.as_deref(), Some("||Gavi (FC Barcelone 😈) · 70'||"));
     }
 
     #[test]
