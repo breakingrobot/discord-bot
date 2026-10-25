@@ -1,10 +1,9 @@
 import { Outlet } from '@tanstack/react-router'
 import { useAtom, useSetAtom } from 'jotai'
-import { Menu } from 'lucide-react'
+import { ChevronsUpDown } from 'lucide-react'
 import { useEffect } from 'react'
 
 import type { GuildAccess, Me } from '@/api/types'
-import { Button } from '@/atoms/Button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/atoms/Sheet'
 import { useLiveUpdates } from '@/hooks/use-live-updates'
 import { hasPerm } from '@/lib/guild'
@@ -47,14 +46,19 @@ export const GuildShell = ({ me, guild, userId }: GuildShellProps) => {
           </div>
         </aside>
         <div className="min-w-0 flex-1">
-          <div className="sticky top-14 z-30 flex items-center gap-2 border-b bg-canvas/95 px-4 py-2 backdrop-blur lg:hidden">
+          <div className="sticky top-14 z-30 flex items-center gap-2 border-b bg-canvas/95 py-1 gutter backdrop-blur lg:hidden short:static">
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild>
-                <Button variant="outline" size="sm" aria-label="Ouvrir le menu du serveur">
-                  <Menu aria-hidden /> Menu
-                </Button>
+                <button
+                  type="button"
+                  aria-label={`Pages du serveur ${guild.name}`}
+                  className="-ml-2 flex min-h-11 min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 text-left text-sm font-medium text-ink outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                >
+                  <span className="truncate">{guild.name}</span>
+                  <ChevronsUpDown className="size-4 shrink-0 text-ink-subtle" aria-hidden />
+                </button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-72 overflow-y-auto">
+              <SheetContent side="left" className="w-72 overflow-y-auto pb-[env(safe-area-inset-bottom)]">
                 <SheetHeader>
                   <SheetTitle>{guild.name}</SheetTitle>
                   <SheetDescription className="sr-only">Pages du serveur</SheetDescription>
@@ -64,11 +68,10 @@ export const GuildShell = ({ me, guild, userId }: GuildShellProps) => {
                 </div>
               </SheetContent>
             </Sheet>
-            <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{guild.name}</span>
             <LiveIndicator status={live} />
           </div>
           {/* Marge du bas : la barre d'onglets fixe ne cache pas la fin de la page. */}
-          <main id="contenu" className="px-4 pt-6 pb-24 sm:px-6 lg:px-8 lg:pb-6">
+          <main id="contenu" className="pt-5 gutter pb-24 sm:pt-6 lg:pb-6">
             <Outlet />
           </main>
         </div>

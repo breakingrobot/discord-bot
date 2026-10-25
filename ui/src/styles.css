@@ -5,6 +5,34 @@
 @import 'sonner/dist/styles.css';
 
 @custom-variant dark (&:where(.dark, .dark *));
+/* Écran peu haut (téléphone en paysage) : les barres collantes cèdent la place au contenu. */
+@custom-variant short (@media (max-height: 32rem));
+
+/* Marges latérales de la page : 1 → 1,5 → 2 rem, jamais sous l'encoche en paysage (viewport-fit=cover). */
+@utility gutter {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+  @media (width >= 40rem) {
+    padding-left: max(1.5rem, env(safe-area-inset-left));
+    padding-right: max(1.5rem, env(safe-area-inset-right));
+  }
+  @media (width >= 64rem) {
+    padding-left: max(2rem, env(safe-area-inset-left));
+    padding-right: max(2rem, env(safe-area-inset-right));
+  }
+}
+
+/* Zone tactile élargie d'un petit lien (écrans tactiles), sans changer la mise en page. */
+@utility tap {
+  @media (pointer: coarse) {
+    position: relative;
+    &::after {
+      content: '';
+      position: absolute;
+      inset: -0.625rem -0.25rem;
+    }
+  }
+}
 
 /*
  * Design tokens, repris du site actuel (web/src/app.css) : mêmes valeurs OKLCH,
@@ -138,6 +166,11 @@
   }
   html {
     color-scheme: light;
+    /* Pas d'agrandissement automatique du texte en paysage (iOS) ; ancres et focus sous les barres collantes. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    scroll-padding-top: 7rem;
+    scroll-padding-bottom: 6rem;
   }
   html.dark {
     color-scheme: dark;
@@ -154,11 +187,43 @@
   @media (pointer: coarse) {
     [data-slot='button'],
     [data-slot='select-trigger'],
-    [data-slot='toggle-group-item'] {
+    [data-slot='toggle-group-item'],
+    [data-slot='input'] {
       min-height: 2.75rem;
+    }
+    /* Cases et interrupteurs restent petits à l'œil, mais se touchent sur 44 px. */
+    [data-slot='checkbox'],
+    [data-slot='switch'] {
+      position: relative;
+      &::after {
+        content: '';
+        position: absolute;
+        inset: -0.75rem;
+      }
     }
     [data-slot='button']:is([class*='size-8'], [class*='size-9']) {
       min-width: 2.75rem;
+    }
+  }
+}
+
+@layer base {
+  /*
+   * Une grille sans colonnes déclarées a une seule colonne « auto » : son contenu l'élargit au-delà de
+   * l'écran. Colonne unique bornée par défaut ; les utilitaires `grid-cols-*` (couche suivante) priment.
+   */
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
     }
   }
 }

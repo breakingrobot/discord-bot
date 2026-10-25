@@ -57,8 +57,8 @@ export const CotisationsContent = ({ data, filteredMember, onMember, onPage }: C
             <Card className="gap-0 py-0">
               <ul className="grid divide-y sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-3">
                 {data.objectiveProgress.map((progress) => (
-                  <li key={progress.member.id} className="grid gap-2 px-5 py-3 sm:border-b">
-                    <div className="flex items-center justify-between gap-2">
+                  <li key={progress.member.id} className="grid min-w-0 gap-2 px-5 py-3 sm:border-b">
+                    <div className="flex min-w-0 items-center justify-between gap-2">
                       <MemberName member={progress.member} guildId={guild.id} />
                       <ObjectiveStatus progress={progress} />
                     </div>
@@ -99,7 +99,7 @@ export const CotisationsContent = ({ data, filteredMember, onMember, onPage }: C
                         <TableCell>
                           <button
                             type="button"
-                            className="rounded-sm text-left hover:text-brand hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                            className="tap rounded-sm text-left hover:text-brand hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
                             onClick={() => onMember(row.member.id)}
                             aria-label={`Voir les cotisations de ${row.member.name}`}
                           >

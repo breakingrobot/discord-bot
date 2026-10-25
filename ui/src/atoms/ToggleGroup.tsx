@@ -7,7 +7,10 @@ import { cn } from '@/lib/utils'
 export const ToggleGroup = ({ className, ...props }: ComponentProps<typeof ToggleGroupPrimitive.Root>) => (
   <ToggleGroupPrimitive.Root
     data-slot="toggle-group"
-    className={cn('inline-flex flex-wrap items-center gap-1.5', className)}
+    className={cn(
+      'grid w-full grid-cols-[repeat(auto-fit,minmax(5.5rem,1fr))] items-center gap-1.5 sm:inline-flex sm:w-auto sm:flex-wrap',
+      className,
+    )}
     {...props}
   />
 )

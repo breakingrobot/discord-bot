@@ -156,10 +156,29 @@ const COLUMNS: CsvColumn<Contact>[] = [
 ```
 
 **Mobile** : sous `lg`, `GuildTabBar` (quatre raccourcis + « Plus » qui ouvre le tiroir) ; la page garde une marge
-basse (`pb-24`). Sous `sm`, un tableau large s'affiche en cartes : `MobileCards` / `MobileCard` (molécule,
-`flush` dans une carte existante) à côté du tableau enveloppé dans `hidden sm:block`. Au doigt
-(`pointer: coarse`), boutons, listes déroulantes et onglets font au moins 44 px (`styles.css`) ; le corps de page ne
-défile jamais horizontalement.
+basse (`pb-24`). La barre du serveur sous l'en-tête se réduit au nom du serveur, qui ouvre ce même tiroir. Sous `sm`,
+un tableau large s'affiche en cartes : `MobileCards` / `MobileCard` (molécule, `flush` dans une carte existante) à
+côté du tableau enveloppé dans `hidden sm:block`. Un dialogue devient une feuille ancrée en bas (à portée du pouce) ;
+ses boutons prennent toute la largeur.
+
+**Responsive : règles de `styles.css`** (à connaître avant d'écrire une classe) :
+
+- `gutter` : marges latérales de la page (1 → 1,5 → 2 rem), jamais sous l'encoche en paysage (`env(safe-area-inset-*)`).
+  À utiliser à la place de `px-4 sm:px-6` sur un conteneur de page.
+- `.grid` sans `grid-cols-*` a une colonne `minmax(0, 1fr)` : son contenu ne l'élargit plus au-delà de l'écran. Un
+  élément `flex` qui doit tronquer son texte garde `min-w-0`.
+- Au doigt (`pointer: coarse`) : boutons, listes déroulantes, champs et groupes de boutons font au moins 44 px ; cases
+  et interrupteurs gardent leur taille mais se touchent sur 44 px. Pour un petit lien ou bouton nu, ajouter la classe
+  `tap` (zone tactile élargie sans changer la mise en page ; inefficace sur un élément `overflow-hidden`/`truncate`),
+  et pour une ligne de navigation `pointer-coarse:min-h-11`.
+- `short:` : écran peu haut (téléphone en paysage, `max-height: 32rem`) ; les barres collantes de l'en-tête et du
+  serveur y deviennent statiques.
+- `ToggleGroup` : colonnes régulières sous `sm`, une ligne qui passe à la ligne dès `sm`. Les animations sont réduites
+  quand le système le demande (`prefers-reduced-motion`).
+
+`node scripts/audit-responsive.mjs` (maquette servie sur `localhost:4175`, Playwright installé à part ; voir l'en-tête
+du script) parcourt toutes les pages à 320, 360, 390, 768, 1024 et 1440 px et échoue si une page défile
+horizontalement ou si un élément sort de l'écran ; il liste aussi les cibles tactiles de moins de 44 px.
 
 **Application installable** : `manifest.webmanifest` (« Bot du groupe »), `theme-color`, icônes, et `sw.js`
 enregistré en production seulement (`main.tsx`) : cache des `/assets/` (immuables), page `offline.html` hors ligne,
