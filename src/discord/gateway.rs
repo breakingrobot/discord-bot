@@ -142,6 +142,7 @@ async fn handle(ctx: Context, event: Event, previous_roles: Option<Vec<Id<RoleMa
                 && message.guild_id.is_some()
             {
                 modules::coffres::ingest::on_message(&ctx, &message.0).await;
+                modules::halamadrid::on_message(&ctx, &message.0).await;
             }
             if let Some(modmail) = &ctx.modmail {
                 modmail.on_event(&ctx, &other).await;

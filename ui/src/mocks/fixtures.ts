@@ -171,6 +171,8 @@ export const ALL_PERMS: Perm[] = [
   'site.stats',
   'site.journal',
   'm2t.utiliser',
+  'clasico.jouer',
+  'clasico.gerer',
 ]
 
 export const GUILDS: GuildAccess[] = [
@@ -374,6 +376,20 @@ export const ACTIONS: ActionDef[] = [
     key: 'm2t.utiliser',
     module: 'Divers',
     label: 'Relancer la personne visée avec /m2t',
+    defaultLevel: 'grade',
+    strict: false,
+  },
+  {
+    key: 'clasico.jouer',
+    module: 'Clásico',
+    label: '/halamadrid (cri, pronostics, classement) et /putabarca',
+    defaultLevel: 'membre',
+    strict: false,
+  },
+  {
+    key: 'clasico.gerer',
+    module: 'Clásico',
+    label: 'Ouvrir un match aux pronostics et saisir le résultat',
     defaultLevel: 'grade',
     strict: false,
   },

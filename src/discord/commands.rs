@@ -24,6 +24,9 @@ pub fn definitions(with_tickets: bool) -> Vec<Command> {
         recrues::commands::definition(),
         phones::commands::definition(),
         crate::modules::m2t::definition(),
+        crate::modules::halamadrid::halamadrid_definition(),
+        crate::modules::halamadrid::putabarca_definition(),
+        crate::modules::halamadrid::golazo_definition(),
         crate::modules::cotisations::commands::definition(),
         crate::modules::coffres::commands::definition(),
         crate::modules::contacts::commands::definition(),
@@ -100,6 +103,9 @@ async fn route(ix: &Ix) -> Result<()> {
                 "recrue" => recrues::commands::handle(ix, &options).await,
                 "numero" => phones::commands::handle(ix, &options).await,
                 "m2t" => crate::modules::m2t::handle(ix).await,
+                "halamadrid" => crate::modules::halamadrid::handle(ix, &options).await,
+                "putabarca" => crate::modules::halamadrid::handle_putabarca(ix, &options).await,
+                "golazo" => crate::modules::halamadrid::handle_golazo(ix, &options).await,
                 "cotisation" => crate::modules::cotisations::commands::handle(ix, &options).await,
                 "coffre" => crate::modules::coffres::commands::handle(ix, &options).await,
                 "contact" => crate::modules::contacts::commands::handle(ix, &options).await,
@@ -147,6 +153,9 @@ async fn route(ix: &Ix) -> Result<()> {
                     crate::modules::coffres::commands::button_pressed(ix, &custom_id).await
                 }
                 presences::absence_panel::NAMESPACE => presences::absence_panel::button(ix, &custom_id).await,
+                crate::modules::halamadrid::NAMESPACE => {
+                    crate::modules::halamadrid::button_pressed(ix, &custom_id).await
+                }
                 // « prospect » : messages publiés avant le renommage du module.
                 "recrue" | "prospect" => recrues::interactions::select(ix, &custom_id, &component.values).await,
                 crate::modmail::buttons::NAMESPACE => crate::modmail::buttons::button(ix, &custom_id).await,
@@ -169,6 +178,9 @@ async fn route(ix: &Ix) -> Result<()> {
                 ("numero", "add-modal") => phones::interactions::add_modal(ix, modal).await,
                 (crate::modules::coffres::commands::NAMESPACE, "inventaire-modal") => {
                     crate::modules::coffres::commands::inventory_modal(ix, custom_id.id, modal).await
+                }
+                (crate::modules::halamadrid::NAMESPACE, "prono-modal") => {
+                    crate::modules::halamadrid::prono_modal(ix, modal).await
                 }
                 (presences::absence_panel::NAMESPACE, "declare-modal") => {
                     presences::absence_panel::modal(ix, modal).await

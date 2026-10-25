@@ -50,6 +50,7 @@ export type Perm =
   | 'membre.fiche'
   | 'site.stats' | 'site.journal'
   | 'm2t.utiliser'
+  | 'clasico.jouer' | 'clasico.gerer'
 
 // ---------------------------------------------------------------------------
 // Session — GET /api/me (toujours 200, même sans connexion)
