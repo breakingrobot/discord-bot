@@ -735,6 +735,67 @@ pub async fn create_external(
     Ok(id)
 }
 
+/// Supprime un match non réglé : mises non réglées rendues (avant-match et en direct),
+/// pronostics, paris et vote effacés. Renvoie le nombre de paris remboursés.
+pub async fn delete_match(db: &SqlitePool, game: &Match) -> Result<usize> {
+    let mut tx = db.begin().await?;
+    let refunds: Vec<(String, i64)> = sqlx::query_as(
+        r#"SELECT "userId", "mise" FROM "MadridBet" WHERE "matchId" = ? AND "gain" IS NULL
+           UNION ALL
+           SELECT "userId", "mise" FROM "MadridLiveBet" WHERE "matchId" = ? AND "gain" IS NULL"#,
+    )
+    .bind(&game.id)
+    .bind(&game.id)
+    .fetch_all(&mut *tx)
+    .await?;
+    for (user, mise) in &refunds {
+        sqlx::query(r#"UPDATE "MadridWallet" SET "balance" = "balance" + ? WHERE "guildId" = ? AND "userId" = ?"#)
+            .bind(mise)
+            .bind(&game.guild_id)
+            .bind(user)
+            .execute(&mut *tx)
+            .await?;
+    }
+    // L'ouverture automatique ne recrée pas un match supprimé.
+    if let Some(external) = &game.external_id {
+        sqlx::query(r#"INSERT OR IGNORE INTO "MadridDismissed" ("guildId", "externalId") VALUES (?, ?)"#)
+            .bind(&game.guild_id)
+            .bind(external)
+            .execute(&mut *tx)
+            .await?;
+    }
+    // Pronostics, paris, vote : supprimés en cascade.
+    sqlx::query(r#"DELETE FROM "MadridMatch" WHERE "id" = ? AND "guildId" = ?"#)
+        .bind(&game.id)
+        .bind(&game.guild_id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(refunds.len())
+}
+
+/// Événement écarté par une suppression (l'ouverture automatique l'ignore).
+pub async fn is_dismissed(db: &SqlitePool, guild_id: &str, external_id: &str) -> Result<bool> {
+    let row: Option<(i64,)> =
+        sqlx::query_as(r#"SELECT 1 FROM "MadridDismissed" WHERE "guildId" = ? AND "externalId" = ?"#)
+            .bind(guild_id)
+            .bind(external_id)
+            .fetch_optional(db)
+            .await?;
+    Ok(row.is_some())
+}
+
+/// Relie un match ouvert à la main à un événement de l'API : heure, adversaire, compétition, logo.
+pub async fn link_external(db: &SqlitePool, id: &str, event: &super::espn::Event, adversaire: &str) -> Result<()> {
+    sqlx::query(r#"UPDATE "MadridMatch" SET "kickoff" = ?, "adversaire" = ? WHERE "id" = ?"#)
+        .bind(DbTime(event.kickoff))
+        .bind(adversaire)
+        .bind(id)
+        .execute(db)
+        .await?;
+    set_feed(db, id, &event.id, &event.league, &event.clock, event.opponent_logo.as_deref()).await
+}
+
 // ---------------------------------------------------------------------------
 // Paris en direct « prochain but »
 
@@ -951,6 +1012,45 @@ mod tests {
         assert_eq!(next_goal_payouts(&bets, NextGoal::Real), vec![4000, 0, 0]);
         assert_eq!(next_goal_payouts(&[(NextGoal::Real, 500)], NextGoal::Adverse), vec![500]);
         assert_eq!(NextGoal::parse("AUCUN"), Some(NextGoal::Aucun));
+    }
+
+    #[tokio::test]
+    async fn bets_settle_and_deleted_matches_refund() {
+        let dir = std::env::temp_dir().join(format!("clasico-test-{}", uuid::Uuid::new_v4()));
+        let db = crate::db::open_main(&dir.join("bot.db")).await.unwrap();
+        let kickoff = DbTime(chrono::Utc::now() + chrono::Duration::hours(2));
+
+        // Match réglé : 3 – 1, le pari « victoire » rafle la mise du pari « défaite ».
+        let id = create(&db, "g", "FC Barcelone", kickoff, "c", "u").await.unwrap();
+        set_prono(&db, &id, "a", 3, 1, Some("Mbappé")).await.unwrap();
+        assert_eq!(place_bet(&db, "g", &id, "a", Outcome::Victoire, 1000).await.unwrap(), Ok(9000));
+        assert_eq!(place_bet(&db, "g", &id, "b", Outcome::Defaite, 3000).await.unwrap(), Ok(7000));
+        assert!(place_bet(&db, "g", &id, "b", Outcome::Defaite, 20_000).await.unwrap().is_err());
+        let game = get(&db, "g", &id).await.unwrap().unwrap();
+        settle(&db, &game, 3, 1, Some("Kylian Mbappé")).await.unwrap();
+        assert_eq!(balance(&db, "g", "a").await.unwrap(), 13_000);
+        assert_eq!(balance(&db, "g", "b").await.unwrap(), 7000);
+        assert_eq!(pronos(&db, &id).await.unwrap()[0].points, Some(4));
+        assert_eq!(standings(&db, "g").await.unwrap()[0].exact, 1);
+
+        // Match supprimé : mises rendues, tout effacé, événement ESPN écarté.
+        let id = create(&db, "g", "Getafe", kickoff, "c", "u").await.unwrap();
+        sqlx::query(r#"UPDATE "MadridMatch" SET "externalId" = 'espn-1' WHERE "id" = ?"#)
+            .bind(&id)
+            .execute(&db)
+            .await
+            .unwrap();
+        place_bet(&db, "g", &id, "a", Outcome::Nul, 2000).await.unwrap().unwrap();
+        place_live_bet(&db, "g", &id, 0, "a", NextGoal::Real, 1000).await.unwrap().unwrap();
+        assert_eq!(balance(&db, "g", "a").await.unwrap(), 10_000);
+        let game = current(&db, "g").await.unwrap().unwrap();
+        assert_eq!(delete_match(&db, &game).await.unwrap(), 2);
+        assert_eq!(balance(&db, "g", "a").await.unwrap(), 13_000);
+        assert!(current(&db, "g").await.unwrap().is_none());
+        assert!(bets(&db, &id).await.unwrap().is_empty());
+        assert!(is_dismissed(&db, "g", "espn-1").await.unwrap());
+        assert!(!has_external(&db, "g", "espn-1").await.unwrap());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
