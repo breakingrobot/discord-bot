@@ -136,6 +136,7 @@ async fn run(errors: Arc<health::ErrorLog>) -> Result<()> {
     modules::recrues::cron::spawn(Arc::clone(&ctx));
     modules::cotisations::cron::spawn(Arc::clone(&ctx));
     modules::rappels::cron::spawn(Arc::clone(&ctx));
+    modules::halamadrid::live::spawn(Arc::clone(&ctx));
     if let Some(modmail) = &ctx.modmail {
         modmail.start(Arc::clone(&ctx));
     }

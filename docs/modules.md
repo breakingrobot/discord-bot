@@ -10,6 +10,7 @@
 | `/fiche [membre]` | Chacun la sienne ; `membre.fiche` pour les autres | [Fiche du membre](#fiche-du-membre). |
 | `/rappels` | Membres du groupe | Ses [rappels en message privé](#rappels-en-message-privé). |
 | `/m2t` | Gradés et leads (`m2t.utiliser`) | Publie « @… t’es co? » dans le salon où la commande est lancée ; seule la personne visée est notifiée. Le niveau se règle avec `/config permission action:m2t.utiliser`. |
+| `/halamadrid`, `/golazo`, `/putabarca` | Membres ; gradés pour ouvrir un match, annoncer un but, saisir le résultat | [Soirée Clásico](#soirée-clásico) : cris, pronostics, paris fictifs, homme du match, classement, chambrage. |
 | Clic droit → *Applications* | Voir [plus bas](#actions-au-clic-droit) | Raccourcis sur un membre ou un message. |
 
 `/config` n'apparaît qu'aux membres ayant « Gérer le serveur ». Les autres commandes sont visibles de tous
@@ -100,6 +101,8 @@ mêmes effets que les commandes ([pages du site](site-web.md#présences)).
 | `site.stats` | Site | Statistiques du serveur sur le site | « Gérer le serveur » |
 | `site.journal` | Site | Journal du staff sur le site | « Gérer le serveur » |
 | `m2t.utiliser` | Divers | Relancer la personne visée avec `/m2t` | Gradés |
+| `clasico.jouer` | Clásico | `/halamadrid` (cri, pronostics, paris, classement) et `/putabarca` | Membres du groupe |
+| `clasico.gerer` | Clásico | Ouvrir un match, `/golazo`, résultat, homme du match, réponses automatiques | Gradés |
 
 Déclarer ses propres absences, répondre aux présences, enregistrer ou supprimer son propre numéro et supprimer
 ses propres cotisations demandent seulement d'être membre du groupe.
@@ -524,6 +527,29 @@ se termine par « Pour ne plus recevoir ces rappels : `/rappels` ».
 
 Un membre dont les messages privés sont fermés est ignoré sans erreur, et pas relancé pendant 7 jours (changer
 ses choix avec `/rappels` efface ce blocage).
+
+## Soirée Clásico
+
+Pour les soirs de match du Real. Tout se passe dans le salon où le match est ouvert.
+
+| Commande | Pour qui | Effet |
+|---|---|---|
+| `/halamadrid match [heure] [adversaire] [date]` | Gradés | Publie l'affiche (21:00 et FC Barcelone par défaut) avec les boutons **Mon prono** et **Lancer un cri**. Un seul match non réglé à la fois. |
+| `/halamadrid prono madrid adverse [buteur]` | Membres | Pronostic (ou bouton **Mon prono**), modifiable jusqu'au coup d'envoi. Barème : score exact 3 pts, bonne issue 1 pt, premier buteur madrilène annoncé qui marque +1. |
+| `/halamadrid parier issue mise` | Membres | Pari en **$ fictifs** (10 000 $ au départ, jamais d'argent réel) sur victoire, nul ou défaite, jusqu'au coup d'envoi. Pari mutuel : les perdants paient les gagnants au prorata des mises ; si personne n'a trouvé, les mises sont rendues. |
+| `/halamadrid pronos` · `cagnotte` | Membres | Tendances et cotes (le détail de chacun s'affiche au coup d'envoi) ; sa cagnotte et les plus riches. |
+| `/golazo [buteur] [adverse]` | Gradés | Annonce un but (grosse annonce, score en direct sur l'affiche, et qui avait annoncé ce buteur). |
+| `/halamadrid resultat [madrid adverse] [buteurs] [role_clown]` | Gradés | Règle le match : points, gains des paris, carte du résultat (score exact, podium, pire prono). Sans score : reprend le score en direct. `role_clown` donne ce rôle pour 24 h à ceux qui ont annoncé ou parié sur la victoire adverse (il faut au bot « Gérer les rôles », rôle sous le sien). |
+| `/halamadrid hommedumatch joueurs [minutes]` | Gradés | Vote à boutons (2 à 10 joueurs, 15 min par défaut), résultat annoncé à la fin. |
+| `/halamadrid classement` | Membres | Points de la saison et badges : 🎯 Nostradamus (scores exacts), 🔮 Voyant (buteurs trouvés), 🤡 Optimiste culé. |
+| `/halamadrid mur` | Membres | Mur de la honte du dernier match : ceux qui ont annoncé ou parié sur la victoire adverse. |
+| `/halamadrid cri` · `/putabarca [cule]` | Membres | Cri de supporter ; vanne bon enfant sur le Barça (la personne visée est nommée sans être notifiée). |
+| `/halamadrid reactions actif` | Gradés | Le bot répond d'une vanne (et d'un 🤡) aux messages « Visca Barça », une fois par minute et par salon (*Message Content Intent* requis). |
+
+**Score en direct automatique** : avec la variable `FOOTBALL_DATA_TOKEN` (clé gratuite sur football-data.org),
+le bot lit le score du match du Real chaque minute pendant 3 h après le coup d'envoi : affiche mise à jour, buts
+annoncés, coup de sifflet final signalé. Le résultat reste validé par un gradé (`/halamadrid resultat` sans score).
+Sans clé, `/golazo` fait le même travail à la main.
 
 ## État de la configuration
 

@@ -146,6 +146,8 @@ perms! {
     SiteStats => "site.stats", "Site", "Statistiques du serveur sur le site", Admin, false;
     Journal => "site.journal", "Site", "Journal du staff sur le site", Admin, false;
     M2t => "m2t.utiliser", "Divers", "Relancer la personne visée avec /m2t", Grade, false;
+    ClasicoJouer => "clasico.jouer", "Clásico", "/halamadrid (cri, pronostics, classement) et /putabarca", Membre, false;
+    ClasicoGerer => "clasico.gerer", "Clásico", "Ouvrir un match aux pronostics et saisir le résultat", Grade, false;
 }
 
 impl Perm {

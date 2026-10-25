@@ -2812,7 +2812,9 @@
           "membre.fiche",
           "site.stats",
           "site.journal",
-          "m2t.utiliser"
+          "m2t.utiliser",
+          "clasico.jouer",
+          "clasico.gerer"
         ],
         "type": "string"
       },

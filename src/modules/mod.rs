@@ -3,6 +3,7 @@ pub mod coffres;
 pub mod contacts;
 pub mod cotisations;
 pub mod fiche;
+pub mod halamadrid;
 pub mod m2t;
 pub mod permissions;
 pub mod phones;
