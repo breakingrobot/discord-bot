@@ -17,19 +17,14 @@ jobs:
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
 
-  # Dépendances Rust (deny.toml) : licences, doublons et sources bloquent ; les failles connues (base RustSec)
-  # sont signalées sans bloquer le temps de traiter celles qui existent déjà.
+  # Dépendances Rust (deny.toml) : failles connues (base RustSec), licences, doublons et sources.
   deny:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          command: check licenses bans sources
-      - uses: EmbarkStudios/cargo-deny-action@v2
-        continue-on-error: true
-        with:
-          command: check advisories
+          command: check
 
   # Le développement se fait aussi sous Windows (mise) : le projet doit y compiler (SQLite embarqué, ring).
   windows:
