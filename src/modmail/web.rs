@@ -279,7 +279,7 @@ async fn serve_attachment(
     let Some(modmail) = ctx.modmail.as_ref() else {
         return not_found();
     };
-    static FILENAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^[0-9a-z._-]+$").unwrap());
+    static FILENAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^[0-9a-z._-]+$").expect("regex valide"));
     if !attachment_id.bytes().all(|b| b.is_ascii_digit()) || !FILENAME.is_match(&filename) {
         return not_found();
     }

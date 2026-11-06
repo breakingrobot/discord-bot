@@ -13,3 +13,9 @@ config.ini
 *.db-shm
 *.sqlite
 .claude/worktrees/
+
+# Réglages personnels (mise, Claude Code) et état local des hooks
+mise.local.toml
+.mise.local.toml
+.claude/settings.local.json
+.claude/.verify-state.json

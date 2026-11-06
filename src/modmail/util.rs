@@ -23,9 +23,10 @@ pub fn parse_db_time(raw: &str) -> Option<chrono::DateTime<Utc>> {
         .or_else(|| raw.parse::<i64>().ok().and_then(chrono::DateTime::from_timestamp_millis))
 }
 
-static SNOWFLAKE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[0-9]{17,}$").unwrap());
-static USER_MENTION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<@!?([0-9]+?)>$").unwrap());
-pub static DELAY_STRING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^([0-9]+)(?:([dhms])[a-z]*)?").unwrap());
+static SNOWFLAKE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[0-9]{17,}$").expect("regex valide"));
+static USER_MENTION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<@!?([0-9]+?)>$").expect("regex valide"));
+pub static DELAY_STRING: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^([0-9]+)(?:([dhms])[a-z]*)?").expect("regex valide"));
 
 pub fn is_snowflake(value: &str) -> bool {
     SNOWFLAKE.is_match(value)
@@ -107,9 +108,9 @@ pub fn humanize_delay(ms: i64) -> String {
     humanize_duration(ms, 7, Some(" et "))
 }
 
-static MARKDOWN_CHARS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"([\\_*|`~])").unwrap());
-static NAME_FORMATTING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"([_`~*|])").unwrap());
-static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)(^|[^<])(https?://\S+)").unwrap());
+static MARKDOWN_CHARS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"([\\_*|`~])").expect("regex valide"));
+static NAME_FORMATTING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"([_`~*|])").expect("regex valide"));
+static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)(^|[^<])(https?://\S+)").expect("regex valide"));
 
 pub fn escape_markdown(value: &str) -> String {
     MARKDOWN_CHARS.replace_all(value, "\\$1").into_owned()
