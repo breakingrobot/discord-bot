@@ -145,7 +145,7 @@ fn env_key_to_config_key(key: &str) -> String {
     // MM_CLOSE_MESSAGE -> closeMessage ; MM_COMMAND_ALIASES__MV -> commandAliases.mv
     // Même expression que modmailbot (remplacements non chevauchants).
     static CAMEL: std::sync::LazyLock<regex::Regex> =
-        std::sync::LazyLock::new(|| regex::Regex::new("([a-z])_([a-z])").unwrap());
+        std::sync::LazyLock::new(|| regex::Regex::new("([a-z])_([a-z])").expect("regex valide"));
     let lower = key.to_lowercase();
     CAMEL
         .replace_all(&lower, |caps: &regex::Captures<'_>| format!("{}{}", &caps[1], caps[2].to_uppercase()))
@@ -433,7 +433,9 @@ impl MmConfig {
         let status_type = r.string_or("statusType", "playing");
         let status_url = r.string_or("statusUrl", "");
         if status_type == "streaming"
-            && !regex::Regex::new(r"(?i)^https://(www\.)?twitch.tv/[a-z\d_\-]+/?$").unwrap().is_match(&status_url)
+            && !regex::Regex::new(r"(?i)^https://(www\.)?twitch.tv/[a-z\d_\-]+/?$")
+                .expect("regex valide")
+                .is_match(&status_url)
         {
             r.errors.push(
                 "Quand statusType vaut \"streaming\", statusUrl doit être une URL de chaîne Twitch valide, par exemple https://www.twitch.tv/Dragory"

@@ -83,8 +83,9 @@ impl<'r> Decode<'r, Sqlite> for DbTime {
 }
 
 static DATE_PATTERN: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"^(\d{1,2})/(\d{1,2})/(\d{4})$").unwrap());
-static TIME_PATTERN: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"^(\d{1,2})[:hH](\d{2})$").unwrap());
+    LazyLock::new(|| regex::Regex::new(r"^(\d{1,2})/(\d{1,2})/(\d{4})$").expect("regex valide"));
+static TIME_PATTERN: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"^(\d{1,2})[:hH](\d{2})$").expect("regex valide"));
 
 /// Date du jour en heure de Paris, au format JJ/MM/AAAA.
 pub fn today_label() -> String {

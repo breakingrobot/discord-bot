@@ -14,11 +14,11 @@ pub const MAX_QUANTITY: i64 = 1_000_000;
 /// Prix maximal, unitaire ou total : protège les totaux d'une saisie aberrante.
 pub const MAX_PRICE: f64 = 1_000_000_000_000.0;
 
-static BULLET: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(?:[•·▪‣◦]\s*|[-*–—]\s+)").unwrap());
+static BULLET: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(?:[•·▪‣◦]\s*|[-*–—]\s+)").expect("regex valide"));
 static QUANTITY_FIRST: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^([0-9][0-9\s]*?)\s*(?:[xX]\s+|×\s*)(\S.*)$").unwrap());
+    LazyLock::new(|| Regex::new(r"^([0-9][0-9\s]*?)\s*(?:[xX]\s+|×\s*)(\S.*)$").expect("regex valide"));
 static QUANTITY_LAST: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^(.*?\S)(?:\s+[xX]|\s*×)\s*([0-9][0-9\s]*)$").unwrap());
+    LazyLock::new(|| Regex::new(r"^(.*?\S)(?:\s+[xX]|\s*×)\s*([0-9][0-9\s]*)$").expect("regex valide"));
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ItemLine {

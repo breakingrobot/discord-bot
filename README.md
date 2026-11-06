@@ -40,4 +40,4 @@ Le bot crée ses bases et déploie ses slash commands tout seul au démarrage.
 | [Tickets](docs/tickets.md) | Fonctionnement, mise en place, boutons, commandes, reprise de modmailbot |
 | [Options des tickets](docs/tickets-options.md) | Toutes les options reconnues, avec leurs valeurs par défaut |
 | [Dépannage](docs/depannage.md) | Problèmes fréquents et leurs causes |
-| [Développement](docs/developpement.md) | Compiler, tester, structure du code, thème du site |
+| [Développement](docs/developpement.md) | Mise en route avec mise (Windows compris), tâches, qualité et agents de code, structure du code |

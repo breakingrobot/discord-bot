@@ -1,0 +1,101 @@
+# Environnement de développement (Windows, macOS, Linux) : https://mise.jdx.dev
+#
+#   mise trust && mise install     # Rust stable (clippy, rustfmt), Node 22, cargo-deny
+#   mise run setup                 # dépendances de l'interface
+#   mise run dev                   # bot + interface en parallèle
+#   mise run check                 # tout ce que vérifie la CI
+#   mise tasks                     # liste des tâches
+#
+# Les tâches sont écrites sans syntaxe propre à un shell (pas de `VAR=…`, de `&&` ni de `cd`) :
+# elles tournent telles quelles sous cmd/PowerShell comme sous bash. Le bot lit `.env` lui-même.
+# Windows : il faut aussi les « Build Tools » de Visual Studio (C++), voir docs/developpement.md.
+
+min_version = "2025.1.0"
+
+[tools]
+# Même canal que la CI (dtolnay/rust-toolchain@stable). L'image Docker fixe sa propre version.
+rust = { version = "stable", components = "clippy,rustfmt" }
+node = "22"
+cargo-deny = "latest"
+
+# --- Mise en route ------------------------------------------------------------
+
+[tasks.setup]
+description = "Installe les dépendances de l'interface (npm ci)"
+dir = "ui"
+run = "npm ci --no-audit --no-fund"
+
+# --- Développement ------------------------------------------------------------
+
+[tasks.dev]
+description = "Bot et interface en parallèle (API relayée vers le bot local)"
+depends = ["dev:bot", "dev:ui"]
+
+[tasks."dev:bot"]
+description = "Lance le bot (lit .env)"
+run = "cargo run"
+
+[tasks."dev:ui"]
+description = "Interface Vite branchée sur le bot local (http://localhost:8890)"
+dir = "ui"
+run = "npm run dev"
+
+[tasks."dev:mock"]
+description = "Interface seule, sur la maquette de l'API (sans bot ni Discord)"
+dir = "ui"
+run = "npm run dev:mock"
+
+# --- Qualité ------------------------------------------------------------------
+
+[tasks.fmt]
+description = "Formate le Rust et l'interface"
+run = ["cargo fmt", "npm --prefix ui run format"]
+
+[tasks.lint]
+description = "Clippy (avertissements bloquants) et Oxlint"
+run = ["cargo clippy --all-targets --locked -- -D warnings", "npm --prefix ui run lint"]
+
+[tasks.test]
+description = "Tests Rust et Vitest"
+run = ["cargo test --locked", "npm --prefix ui test"]
+
+[tasks.openapi]
+description = "Régénère ui/openapi.json depuis le code et vérifie le client de l'interface"
+env = { UPDATE_OPENAPI = "1" }
+run = ["cargo test --locked openapi_spec_is_up_to_date", "npm --prefix ui run check:api"]
+
+[tasks."check:rust"]
+description = "CI côté Rust : format, Clippy, tests"
+run = ["cargo fmt --check", "cargo clippy --all-targets --locked -- -D warnings", "cargo test --locked"]
+
+[tasks."check:ui"]
+description = "CI côté interface : format, lint, types, contrat d'API, React Compiler, tests, build"
+dir = "ui"
+run = [
+  "npm run format:check",
+  "npm run lint",
+  "npm run typecheck",
+  "npm run check:api",
+  "npm run check:compiler",
+  "npm test",
+  "npm run build",
+]
+
+[tasks.check]
+description = "Tout ce que vérifie la CI (Rust et interface en parallèle)"
+depends = ["check:rust", "check:ui"]
+
+[tasks.deny]
+description = "Dépendances Rust : failles connues, licences, sources (cargo-deny)"
+run = "cargo deny check"
+
+# --- Construction -------------------------------------------------------------
+
+[tasks.build]
+description = "Interface compilée (ui/dist) puis binaire du bot en release"
+run = ["npm --prefix ui run build", "cargo build --release --locked"]
+
+[tasks."audit:responsive"]
+description = "Audit responsive du site sur la maquette (Playwright installé à part, maquette servie sur :4175)"
+dir = "ui"
+run = "node scripts/audit-responsive.mjs"

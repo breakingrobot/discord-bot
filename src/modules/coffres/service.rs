@@ -344,13 +344,13 @@ pub async fn set_inventory(
 }
 
 /// Puce ou tiret en début de ligne (`- `, `* `, `• `), ignoré.
-static BULLET: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(?:[•·▪‣◦]\s*|[-*–—]\s+)").unwrap());
+static BULLET: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(?:[•·▪‣◦]\s*|[-*–—]\s+)").expect("regex valide"));
 /// `42x repair_kit`, `42 x repair_kit`, `42×repair_kit`.
 static QUANTITY_FIRST: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^([0-9][0-9\s_]*?)\s*(?:[xX]\s+|×\s*)(\S.*)$").unwrap());
+    LazyLock::new(|| Regex::new(r"^([0-9][0-9\s_]*?)\s*(?:[xX]\s+|×\s*)(\S.*)$").expect("regex valide"));
 /// `repair_kit x42`, `repair_kit x 42`, `repair_kit×42`.
 static QUANTITY_LAST: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^(.*?\S)(?:\s+[xX]|\s*×)\s*([0-9][0-9\s_]*)$").unwrap());
+    LazyLock::new(|| Regex::new(r"^(.*?\S)(?:\s+[xX]|\s*×)\s*([0-9][0-9\s_]*)$").expect("regex valide"));
 
 /// Quantité saisie : entier, espaces (de milliers) et `_` ignorés.
 fn read_integer(raw: &str) -> Option<i64> {

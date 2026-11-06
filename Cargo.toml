@@ -6,6 +6,36 @@ rust-version = "1.88"
 description = "Bot Discord : présences, transactions, véhicules, recrues, numéros et tickets (modmail)"
 publish = false
 
+# Lints du projet : la CI tourne en `-D warnings`, chaque « warn » y est donc bloquant.
+# Tests : unwrap/expect/panic admis (clippy.toml). Ajouter un lint seulement s'il passe partout.
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+# Jamais de code de débogage ni de trou laissé en production.
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+exit = "deny"
+mem_forget = "deny"
+# Pas de `unwrap()` hors des tests : `expect("raison")` documente l'invariant, `?` propage l'erreur.
+unwrap_used = "deny"
+# Lisibilité et idiomes (tous déjà respectés).
+uninlined_format_args = "warn"
+manual_let_else = "warn"
+cloned_instead_of_copied = "warn"
+explicit_iter_loop = "warn"
+implicit_clone = "warn"
+inefficient_to_string = "warn"
+if_not_else = "warn"
+unnested_or_patterns = "warn"
+str_to_string = "warn"
+lossy_float_literal = "warn"
+rest_pat_in_fully_bound_structs = "warn"
+rc_buffer = "warn"
+
 [dependencies]
 # Discord — Twilight : briques séparées, cache filtrable, événements filtrés avant désérialisation.
 twilight-gateway = { version = "0.17.1", default-features = false, features = ["rustls-webpki-roots", "twilight-http", "zstd"] }

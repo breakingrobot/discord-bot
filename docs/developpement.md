@@ -1,5 +1,58 @@
 # Développement
 
+## Mise en route (Windows, macOS, Linux) avec mise
+
+[mise](https://mise.jdx.dev) installe les bonnes versions des outils (Rust stable avec Clippy et rustfmt, Node 22,
+cargo-deny) et porte les tâches du projet (`mise.toml`), identiques sous PowerShell, cmd et bash.
+
+### Windows
+
+1. **Outils de compilation C++** (le bot embarque SQLite et `ring`, compilés en C) : installe les « Build Tools for
+   Visual Studio 2022 » avec la charge de travail « Développement Desktop en C++ » :
+
+   ```powershell
+   winget install --id Microsoft.VisualStudio.2022.BuildTools --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+   ```
+
+2. **Git** (fins de ligne gérées par `.gitattributes`, rien à régler) et **mise** :
+
+   ```powershell
+   winget install --id Git.Git
+   winget install --id jdx.mise
+   ```
+
+3. **Activer mise** dans PowerShell (une fois), puis rouvrir le terminal :
+
+   ```powershell
+   Add-Content $PROFILE '(&mise activate pwsh) | Out-String | Invoke-Expression'
+   ```
+
+   VS Code et RustRover trouvent les outils si le terminal est activé ; sinon utiliser les raccourcis
+   `mise activate --shims` (voir la documentation de mise).
+
+### Ensuite, sur tous les systèmes
+
+```bash
+git clone <dépôt> && cd <dépôt>
+mise trust          # autorise le mise.toml du dépôt
+mise install        # Rust stable, Node 22, cargo-deny
+mise run setup      # npm ci de l'interface
+cp .env.example .env   # PowerShell : Copy-Item .env.example .env — puis renseigner DISCORD_TOKEN
+mise run dev        # bot (cargo run) + interface (Vite) en parallèle
+```
+
+| Tâche | Effet |
+|---|---|
+| `mise run dev` · `dev:bot` · `dev:ui` · `dev:mock` | Bot et interface ; interface seule sur la maquette (sans Discord) |
+| `mise run check` | Tout ce que vérifie la CI, Rust et interface en parallèle (`check:rust`, `check:ui`) |
+| `mise run fmt` · `lint` · `test` | Formatage, Clippy + Oxlint, tests Rust + Vitest |
+| `mise run openapi` | Régénère `ui/openapi.json` après un changement d'API et vérifie le client |
+| `mise run deny` | Failles connues, licences et sources des dépendances Rust (`deny.toml`) |
+| `mise run build` | Interface compilée puis binaire du bot en release |
+| `mise tasks` | Toutes les tâches |
+
+Sans mise, les commandes équivalentes :
+
 ```bash
 cargo fmt
 cargo clippy --all-targets -- -D warnings
@@ -9,7 +62,24 @@ cd ui && npm ci
 npm run format:check && npm run lint && npm run typecheck && npm run check:api && npm test && npm run build
 ```
 
-La CI (`.github/workflows/ci.yml`) vérifie tout cela (Rust et interface) et le build Docker.
+La CI (`.github/workflows/ci.yml`) vérifie tout cela (Rust, interface, dépendances avec cargo-deny, compilation sous
+Windows) et le build Docker.
+
+## Qualité et agents de code
+
+- **Lints Rust** (`Cargo.toml`, section `[lints]`) : `unsafe` interdit ; `dbg!`, `todo!`, `println!` et `unwrap()`
+  interdits hors des tests (`clippy.toml` les autorise dans les tests) ; quelques lints d'idiomes. La CI tourne en
+  `-D warnings` : tout avertissement bloque.
+- **Règles du dépôt pour les agents** : `AGENTS.md` (lu par Claude Code via `CLAUDE.md`, et par Codex, Cursor…).
+- **Harnais Claude Code** (`.claude/`) :
+  - hooks qui refusent d'écrire dans les fichiers générés, `.env` et les migrations déjà fusionnées (`guard.mjs`) ;
+  - formatage de chaque fichier modifié (`format.mjs`) ;
+  - Clippy et tests avant de rendre la main (`verify.mjs`, désactivable par `CLAUDE_SKIP_VERIFY=1`) ;
+  - compétences pas à pas (`skills/` : vérifier, module Discord, route d'API, migration, page du site, mener une PR) ;
+  - sous-agent `relecteur` qui relit un diff selon les règles du projet.
+- Réglages personnels hors dépôt : `mise.local.toml`, `.claude/settings.local.json`.
+
+## Organisation du code
 
 | Dossier | Contenu |
 |---|---|

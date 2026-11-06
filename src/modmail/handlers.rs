@@ -711,7 +711,7 @@ fn snippet_args(raw: &str) -> Vec<String> {
 /// Remplace `{1}`, `{2}`… par les arguments ; `\{` produit une accolade littérale.
 fn render_snippet(body: &str, args: &[String]) -> String {
     static PLACEHOLDER: std::sync::LazyLock<regex::Regex> =
-        std::sync::LazyLock::new(|| regex::Regex::new(r"(\\?)\{(\d+)\}").unwrap());
+        std::sync::LazyLock::new(|| regex::Regex::new(r"(\\?)\{(\d+)\}").expect("regex valide"));
     let rendered = PLACEHOLDER.replace_all(body, |caps: &regex::Captures<'_>| {
         if !caps[1].is_empty() {
             return caps[0].to_owned();
